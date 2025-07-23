@@ -1,0 +1,75 @@
+# main script to read in processed sPIV and PLIF datasets from DaVis and postprocess.
+# includes overlaying data to common grid, creating plots and animations, and performing analyses of interest.
+# Elle Stark July 2025 
+
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import lvpyio as lv  # LaVision's package for importing .imx files to Python
+import logging
+from pivpy import io, graphics, pivpy
+import scipy.interpolate as interp
+import xarray as xr
+
+# Set up logging for convenient messages
+logger = logging.getLogger('sPIV_PLIF')
+logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(asctime)s:%(name)s:%(levelname)s:%(message)s"))
+logger.addHandler(handler)
+INFO = logger.info
+WARN = logger.warn
+DEBUG = logger.debug
+
+
+def main(): 
+
+    # import .imx files from DaVis
+    piv_dir = 'D:/Elle/SimulData_7.10.2025_PIVprocessing/7.10_20cms_0pct_He_iso_air0.926/StereoPIV_MPd(3x32x32_75%ov)/3x3 smooth/'
+    plif_file = 'D:/Elle/SimulData_7.10.2025_PLIFprocessing/data_7.10_20cms_0pct_He_iso_2x2bin/Subtract_bg_0pctHe/Divide_ffmbg_0pctHe/Divide_avgC0/AddCameraAttributes/final_calibrated_0pctHe/Median filter/5x5 gaussian smoothing.set' 
+
+    plif_set = lv.read_set(plif_file)
+    startframe = 1000
+    endframe = 1101
+    nframes = endframe - startframe
+
+    for i in range(startframe, endframe):
+        buffer = plif_set[i]
+        arr = buffer.as_masked_array()
+
+        if i==startframe:
+            frame = buffer[0]
+            height, width = frame.shape # height and width in pixel
+            plifx, plify = frame.scales.x, frame.scales.y
+            INFO(f"PLIF left boundary: {plifx.offset} {plifx.unit}")
+            INFO(f"PLIF right boundary: {plifx.offset + width * plifx.slope} {plifx.unit}")
+            INFO(f"PLIF top boundary: {plify.offset} {plify.unit}")
+            INFO(f"PLIF bottom boundary: {plify.offset + height * plify.slope} {plify.unit}")
+            plif_data = np.zeros((height, width, nframes))
+
+        plif_data[:, :, i-startframe] = arr.data
+
+    piv_data = []
+    for i in range(1, 102):
+        data = io.load_vc7(f"{piv_dir}/B0000{i}.vc7")
+        piv_data.append(data)
+
+    # create common grid of interpolated data for each dataset in 'real-world space'
+    # determine common grid based on image extents (likely constrained by PIV)
+    
+
+    # PIV data: convert from original DataArray.coords to new coords
+
+    # PLIF data: interpolate based on scales? 
+
+    # plot one frame of overlaid data (includes options for derived quantities from vectorfield)
+
+
+    # plot movie of overlaid data (includes options for derived quantities from vectorfield)
+
+
+    # analyze data as needed
+
+
+if __name__=="__main__":
+    main()
