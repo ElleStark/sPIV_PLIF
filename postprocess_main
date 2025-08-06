@@ -2,14 +2,21 @@
 # includes overlaying data to common grid, creating plots and animations, and performing analyses of interest.
 # Elle Stark July 2025 
 
+from glob import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import matplotlib.colors as colors
+from matplotlib import rcParams
 import lvpyio as lv  # LaVision's package for importing .imx files to Python
 import logging
-from pivpy import io, graphics, pivpy
+import pivpy as pp
+from pivpy import io
 import scipy.interpolate as interp
 import xarray as xr
+import os
+import utils
+import utils.interp_shared_grid
 
 # Set up logging for convenient messages
 logger = logging.getLogger('sPIV_PLIF')
@@ -24,43 +31,196 @@ DEBUG = logger.debug
 
 def main(): 
 
-    # import .imx files from DaVis
-    piv_dir = 'D:/Elle/SimulData_7.10.2025_PIVprocessing/7.10_20cms_0pct_He_iso_air0.926/StereoPIV_MPd(3x32x32_75%ov)/3x3 smooth/'
-    plif_file = 'D:/Elle/SimulData_7.10.2025_PLIFprocessing/data_7.10_20cms_0pct_He_iso_2x2bin/Subtract_bg_0pctHe/Divide_ffmbg_0pctHe/Divide_avgC0/AddCameraAttributes/final_calibrated_0pctHe/Median filter/5x5 gaussian smoothing.set' 
+    # Directory of data locations. assumes PIV data is in .vc7 format and PLIF data is .im7 format
+    piv_dir = 'D:/Elle/SimulData_7.23.2025_PIVprocessing/7.23_45pctHe0.403_55pctair0.493_PIV0.02_15cms_TG25cm/StereoPIV_MPd(3x32x32_75%ov)/PostProc_frame1650to1750/'
+    plif_dir = 'D:/Elle/SimulData_7.23.2025_PLIF/data_7.23_45pctHe0.403_55pctair0.493_PIV0.02_15cms_TG25cm/Subtract_bg/Divide_ffmbg/Divide_C0_22/AddCameraAttributes/ImageCorrection/Median filter/5x5 smoothing/Resize_01/CopySelected/'
 
-    plif_set = lv.read_set(plif_file)
-    startframe = 1000
-    endframe = 1101
-    nframes = endframe - startframe
+    snapshot = True
+    frame_to_plot = 63  # index of frame for snapshot
+    make_movie = True
+    movie_file = 'ignore/plots/NeuHe55pct_15cms_LgTG25cm_10s.mp4'
 
-    for i in range(startframe, endframe):
-        buffer = plif_set[i]
-        arr = buffer.as_masked_array()
+    # load file lists
+    im7_files = sorted(glob(os.path.join(plif_dir, '*.im7')))
+    vc7_files = sorted(glob(os.path.join(piv_dir, '*.vc7')))
+    n_frames = min(len(im7_files), len(vc7_files))
 
-        if i==startframe:
-            frame = buffer[0]
-            height, width = frame.shape # height and width in pixel
-            plifx, plify = frame.scales.x, frame.scales.y
-            INFO(f"PLIF left boundary: {plifx.offset} {plifx.unit}")
-            INFO(f"PLIF right boundary: {plifx.offset + width * plifx.slope} {plifx.unit}")
-            INFO(f"PLIF top boundary: {plify.offset} {plify.unit}")
-            INFO(f"PLIF bottom boundary: {plify.offset + height * plify.slope} {plify.unit}")
-            plif_data = np.zeros((height, width, nframes))
+    # read first frame to define grid in real-world coordinates
+    scalar_data = lv.read_buffer(im7_files[0])
+    scalar_data = scalar_data[0]
+    vec_data = io.load_vc7(vc7_files[0])
 
-        plif_data[:, :, i-startframe] = arr.data
+    # extract vector data
+    x_vec, y_vec = vec_data['x'].values, vec_data['y'].values
+    u_vec, v_vec = vec_data['u'].values, vec_data['v'].values
 
-    piv_data = []
-    for i in range(1, 102):
-        data = io.load_vc7(f"{piv_dir}/B0000{i}.vc7")
-        piv_data.append(data)
+    # set up real-world coordinate grid
+    nx, ny = 540, 640
+    x_min = min(x_vec.min(), 0)
+    x_min = -130
+    x_max = x_vec.max()
+    x_max = 130
+    y_min = min(y_vec.min(), 0)
+    y_max = y_vec.max()
+    #y_max = max(y_vec.max(), scalar_data.shape[0])
+
+    xg, yg = np.meshgrid(np.linspace(x_min, x_max, nx), np.linspace(y_min, y_max, ny))
+
+    # # read and interpolate desired frame for plotting
+    # im7_data = lv.read_buffer(im7_files[frame_to_plot])
+    # im7_data = im7_data[0]
+    # vec_data = io.load_vc7(vc7_files[frame_to_plot])
+    # h, u, v = utils.interp_shared_grid.interp_to_shared_grid(im7_data, vec_data, xg, yg)
+
+    # Subsample for quiver
+    vec_stride = 50
+    # hq = h[::vec_stride, ::vec_stride]
+    # uq = u[::vec_stride, ::vec_stride]
+    # vq = v[::vec_stride, ::vec_stride]
+    xq = xg[::vec_stride, ::vec_stride]
+    yq = yg[::vec_stride, ::vec_stride]
+
+
+    fig, ax = plt.subplots(figsize=(10, 12), facecolor='k')
+    vmin=0.01
+    # h[h<0.01] = 0.01
+    vmax=0.5
+    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
+    # ax.imshow(np.flipud(h), extent=[xg.min(), xg.max(), yg.min(), yg.max()], origin='lower', aspect='auto', cmap='magma', norm=norm)
+    # plt.quiver(xq, yq, uq, vq, scale=5, color='white')
+    # ax.set_aspect('equal', adjustable='box')
+    # plt.title(f'Frame {frame_to_plot}')
+    # plt.xlabel('x [mm]')
+    # plt.ylabel('y [mm]')
+    # #plt.colorbar(label='Scalar Field')
+    # plt.tight_layout()
+    # plt.savefig(f'ignore/plots/NeuHe_10Hz_15cms_frame{frame_to_plot}.png', dpi=300)
+    # plt.show()
+    
+
+
+    #---------------- ANIMATION ------------------
+    if make_movie:
+        # --- Load initial frame to initialize plot ---
+        im7_data = lv.read_buffer(im7_files[0])
+        im7_data = im7_data[0]
+        vec_df = io.load_vc7(vc7_files[0])
+        h_interp, u_interp, v_interp = utils.interp_shared_grid.interp_to_shared_grid(im7_data, vec_df, xg, yg)
+        h_interp[h_interp<vmin]=vmin
+
+        uq = u_interp[::vec_stride, ::vec_stride]
+        vq = v_interp[::vec_stride, ::vec_stride]
+
+            # --- Initialize Figure ---
+        fig, ax = plt.subplots(figsize=(10, 12))
+        
+
+        # --- Plot imshow for scalar field ---
+        im = ax.imshow(np.flipud(h_interp), extent=[xg.min(), xg.max(), yg.min(), yg.max()],
+                    origin='lower', aspect='auto', cmap='magma', norm=norm)
+
+        # --- Add initial quiver plot ---
+        qv = ax.quiver(xq, yq, uq, vq, scale=5, color='white')
+
+        # --- Add colorbar ---
+        cbar = fig.colorbar(im, ax=ax, label='Scalar Field')
+
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_xlabel('x [mm]')
+        ax.set_ylabel('y [mm]')
+        #ax.set_title('Scalar + Vector Overlay Animation')
+
+        # --- Animation update function ---
+        def update(frame_idx):
+            im7_data = lv.read_buffer(im7_files[frame_idx])
+            im7_data = im7_data[0]
+            vec_df = io.load_vc7(vc7_files[frame_idx])
+
+            h_interp, u_interp, v_interp = utils.interp_shared_grid.interp_to_shared_grid(im7_data, vec_df, xg, yg)
+            h_interp[h_interp<vmin]=vmin
+            # Update imshow image data
+            im.set_data(np.flipud(h_interp))
+
+            # Optional: Keep consistent color scaling across frames
+            # im.set_clim(vmin=0.0, vmax=1.0)
+
+            # Subsample quiver again
+            uq = u_interp[::vec_stride, ::vec_stride]
+            vq = v_interp[::vec_stride, ::vec_stride]
+
+            # Update quiver vectors
+            qv.set_UVC(uq, vq)
+
+            ax.set_title(f'Frame {frame_idx}')
+            return [im, qv]
+
+        # --- Create Animation ---
+        n_frames = min(len(im7_files), len(vc7_files))
+        n_frames = 100
+        ani = animation.FuncAnimation(fig, update, frames=n_frames, blit=False, interval=100)
+
+        # --- Save to file ---
+        # Set FFmpeg writer path
+        rcParams['animation.ffmpeg_path'] = r"C:/Users/LaVision\AppData/Local/Programs/ffmpeg-7.1-essentials_build/bin/ffmpeg.exe"  # Replace with your actual path
+
+        # Create writer object
+        Writer = animation.FFMpegWriter(fps=10, bitrate=1800)
+        ani.save(movie_file, dpi=300, writer=Writer)
+
+        plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+    # # import .imx files from DaVis
+    # piv_dir = 'D:/Elle/SimulData_7.10.2025_PIVprocessing/7.10_20cms_0pct_He_iso_air0.926/StereoPIV_MPd(3x32x32_75%ov)/3x3 smooth/'
+    # plif_file = 'D:/Elle/SimulData_7.10.2025_PLIFprocessing/data_7.10_20cms_0pct_He_iso_2x2bin/Subtract_bg_0pctHe/Divide_ffmbg_0pctHe/Divide_avgC0/AddCameraAttributes/final_calibrated_0pctHe/Median filter/5x5 gaussian smoothing.set' 
+
+    # plif_set = lv.read_set(plif_file)
+    # startframe = 1000
+    # endframe = 1101
+    # nframes = endframe - startframe
+
+    # for i in range(startframe, endframe):
+    #     buffer = plif_set[i]
+    #     arr = buffer.as_masked_array()
+
+    #     if i==startframe:
+    #         frame = buffer[0]
+    #         height, width = frame.shape # height and width in pixel
+    #         plifx, plify = frame.scales.x, frame.scales.y
+    #         INFO(f"PLIF left boundary: {plifx.offset} {plifx.unit}")
+    #         INFO(f"PLIF right boundary: {plifx.offset + width * plifx.slope} {plifx.unit}")
+    #         INFO(f"PLIF top boundary: {plify.offset} {plify.unit}")
+    #         INFO(f"PLIF bottom boundary: {plify.offset + height * plify.slope} {plify.unit}")
+    #         plif_data = np.zeros((height, width, nframes))
+
+    #     plif_data[:, :, i-startframe] = arr.data
+
+    # piv_data = []
+    # for i in range(1, 102):
+    #     data = io.load_vc7(f"{piv_dir}/B0000{i}.vc7")
+    #     piv_data.append(data)
+
+
+
 
     # create common grid of interpolated data for each dataset in 'real-world space'
     # determine common grid based on image extents (likely constrained by PIV)
-    
+
 
     # PIV data: convert from original DataArray.coords to new coords
 
     # PLIF data: interpolate based on scales? 
+
 
     # plot one frame of overlaid data (includes options for derived quantities from vectorfield)
 
