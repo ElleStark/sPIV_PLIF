@@ -1,0 +1,19 @@
+# Example configuration for a small dataset run
+
+[dataset]
+name = "example_dataset"
+data_path = "../data/example_dataset/"
+pattern = "*.tif"
+
+[io]
+output_dir = "./outputs"
+save_intermediate = true
+
+[processing]
+frame_rate = 20.0
+window_size = 32
+overlap = 0.5
+
+[visualization]
+colormap = "viridis"
+save_plots = true
