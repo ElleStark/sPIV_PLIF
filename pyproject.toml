@@ -29,7 +29,8 @@ dependencies = [
 	"h5py>=3.13", 
     "pivpy", 
     "lvpyio", 
-    "xarray"
+    "xarray", 
+	"tomlkit"
 ]
 
 [project.optional-dependencies]

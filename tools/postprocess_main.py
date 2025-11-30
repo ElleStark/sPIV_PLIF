@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-import tomllib
+import tomlkit
 from typing import Any, Dict
 
 
@@ -31,7 +31,7 @@ def load_config(path: str | Path) -> Dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Config not found: {path}")
     with path.open("rb") as fh:
-        return tomllib.load(fh)
+        return tomlkit.load(fh)
 
 
 def main(argv: list[str] | None = None) -> None:

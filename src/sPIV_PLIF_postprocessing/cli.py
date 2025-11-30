@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-import tomllib
+import tomlkit
 from typing import Any, Dict
 
 from .pipeline import run as run_pipeline
@@ -20,7 +20,7 @@ logger = logging.getLogger("sPIV_PLIF.cli")
 def load_config(path: str | Path) -> Dict[str, Any]:
     path = Path(path)
     with path.open("rb") as fh:
-        return tomllib.load(fh)
+        return tomlkit.load(fh)
 
 
 def build_parser() -> argparse.ArgumentParser:
