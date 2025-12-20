@@ -26,11 +26,10 @@ dependencies = [
 	"matplotlib>=3.10",
 	"pandas>=2.2.3",
 	"opencv-python>=4.11",
-	"h5py>=3.13", 
-    "pivpy", 
+	"h5py>=3.13",  
     "lvpyio", 
-    "xarray", 
-	"tomlkit"
+	"tomlkit", 
+	"cmasher"
 ]
 
 [project.optional-dependencies]
