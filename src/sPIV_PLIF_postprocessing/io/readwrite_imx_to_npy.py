@@ -45,8 +45,9 @@ def extract_frame_and_axes(buffer) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     arr = buffer.as_masked_array()
     frame = np.array(arr.filled(np.nan), dtype=np.float32)
-    x_scale = buffer.scales.x
-    y_scale = buffer.scales.y
+    frameData = buffer[0]
+    x_scale = frameData.scales.x
+    y_scale = frameData.scales.y
     x_axis = x_scale.offset + x_scale.slope * np.arange(frame.shape[1])
     y_axis = y_scale.offset + y_scale.slope * np.arange(frame.shape[0])
     return frame, x_axis, y_axis
