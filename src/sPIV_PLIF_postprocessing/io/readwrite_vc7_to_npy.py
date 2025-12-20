@@ -1,80 +1,187 @@
-""" read in original head-specific .vc7 files from DaVis and combine into single .npy ndarray, 
-    along with x and y coordinate arrays. Save as .npy file for later use"""
+"""
+Read paired .vc7 vector sets from two heads, interleave frames, and interpolate u/v/w
+onto a shared physical grid (-149.5 to 149.5 mm in x and y at 0.5 mm spacing).
 
-from glob import glob
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-import matplotlib.colors as colors
-from matplotlib import rcParams
+Outputs three float32 .npy stacks (u, v, w) with shape (ny, nx, n_frames).
+"""
+
+from __future__ import annotations
+
 import logging
-import lvpyio as lv  # LaVision's package for importing .imx and .vc7 files to Python
-# import pivpy as pp
-# from pivpy import io
-import scipy.interpolate as interp
-# import xarray as xr
-import os
+from pathlib import Path
+from typing import Optional, Sequence, Tuple
 
-save_dir = 'E:/sPIV_PLIF_processedData/'
-save_name = '8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_'
-piv_dir = 'D:/PIV_20Hz_data/'
+import lvpyio as lv
+import numpy as np
+from scipy.interpolate import RegularGridInterpolator
 
-piv_path1 = piv_dir + '8.29.2025_20Hz_BuoyancyEffects_L1/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso\CopySelected_L1\StereoPIV_MPd(2x12x12_75%ov)_01.set'
-piv_path2 = piv_dir + '8.29.2025_20Hz_BuoyancyEffects_L2/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso\CopySelected_L2\StereoPIV_MPd(2x12x12_75%ov).set'
+# Target grid in millimeters
+TARGET_MIN_MM = -149.5
+TARGET_MAX_MM = 149.5
+TARGET_STEP_MM = 0.5
+TARGET_X = np.arange(TARGET_MIN_MM, TARGET_MAX_MM + TARGET_STEP_MM / 2, TARGET_STEP_MM)
+TARGET_Y = np.arange(TARGET_MIN_MM, TARGET_MAX_MM + TARGET_STEP_MM / 2, TARGET_STEP_MM)
 
-# read first frame to define grid in real-world coordinates
-vec_set1 = lv.read_set(piv_path1)
-vec_set2 = lv.read_set(piv_path2)
-n_frames = len(vec_set1) + len(vec_set2)
+logger = logging.getLogger(__name__)
 
-vec_firstbuffer1 = vec_set1[0]
-vec_firstframe1 = vec_firstbuffer1[0].as_masked_array()
-vec_firstbuffer2 = vec_set2[0]
-vec_firstframe2 = vec_firstbuffer2[0].as_masked_array()
-
-# extract x, y grid data
-x, y = vec_firstbuffer1[0].grid.x, vec_firstbuffer1[0].grid.y
-# print(f'x grid shape: {x.shape}, y grid shape: {y.shape}')
-print(f'x grid {x}; y grid {y}')
+# -------------------------
+# Helpers
+# -------------------------
 
 
-# get scales and offset to compute real-world coordinates
-# check scales first
-x_scale = vec_firstbuffer1[0].scales.x
-y_scale = vec_firstbuffer1[0].scales.y
-print(f'FIRST vector set:      x scale: slope={x_scale.slope}, offset={x_scale.offset}, unit={x_scale.unit}'
-      f'; y scale: slope={y_scale.slope}, offset={y_scale.offset}, unit={y_scale.unit}')
-x_scale2 = vec_firstbuffer2[0].scales.x
-y_scale2 = vec_firstbuffer2[0].scales.y
-print(f'SECOND vector set:     x scale: slope={x_scale2.slope}, offset={x_scale2.offset}, unit={x_scale2.unit}'
-      f'; y scale: slope={y_scale2.slope}, offset={y_scale2.offset}, unit={y_scale2.unit}')
-# looks like y dims are 2 px off, x scale 1 px off between two heads; assume first head is correct
-
-u1 = vec_firstframe1['u']
-u2 = vec_firstframe2['u']
-
-# initialize arrays for storing collated data
-all_u = np.zeros((u1.shape[0], u2.shape[1], n_frames), dtype=np.float32)
-all_v = np.zeros((u1.shape[0], u2.shape[1], n_frames), dtype=np.float32)
-all_w = np.zeros((u1.shape[0], u2.shape[1], n_frames), dtype=np.float32)
-
-# loop over all frames to collate data
-for i in range(n_frames):
-    if i%2==0:  # even frames from first head
-        vec_data = vec_set1[int(i/2)]
-        vec_data = vec_data[0].as_masked_array()
-        all_u[:, :, i] = vec_data['u'][:, :-1]
-        all_v[:, :, i] = vec_data['v'][:, :-1]
-        all_w[:, :, i] = vec_data['w'][:, :-1]
-    else:  # odd frames from second head
-        vec_data = vec_set2[int((i-1)/2)]
-        vec_data = vec_data[0].as_masked_array()
-        all_u[:, :, i] = vec_data['u'][:-2, :]
-        all_v[:, :, i] = vec_data['v'][:-2, :]
-        all_w[:, :, i] = vec_data['w'][:-2, :]
+def ensure_axis_ascending(axis: np.ndarray, field: np.ndarray, axis_index: int) -> tuple[np.ndarray, np.ndarray]:
+    """Ensure a coordinate axis is ascending; flip data if needed."""
+    if axis.size >= 2 and axis[1] < axis[0]:
+        axis = axis[::-1]
+        if axis_index == 0:
+            field = field[::-1, :]
+        else:
+            field = field[:, ::-1]
+    return axis, field
 
 
-np.save(save_dir + save_name +'u.npy', all_u)
-np.save(save_dir + save_name +'v.npy', all_v)
-np.save(save_dir + save_name +'w.npy', all_w)
+def extract_axes_from_vecbuffer(vecbuffer) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Try to pull 1D physical axes from a vector buffer.
+    Prefer grid.x/grid.y if present; fall back to scales.x/scales.y.
+    """
+    grid = getattr(vecbuffer[0], "grid", None) if hasattr(vecbuffer, "__getitem__") else getattr(vecbuffer, "grid", None)
+    if grid and getattr(grid, "x", None) is not None and getattr(grid, "y", None) is not None:
+        gx = np.array(grid.x)
+        gy = np.array(grid.y)
+        if gx.ndim == 2:
+            x_axis = gx[0, :]
+        else:
+            x_axis = gx.ravel()
+        if gy.ndim == 2:
+            y_axis = gy[:, 0]
+        else:
+            y_axis = gy.ravel()
+        return x_axis, y_axis
 
+    scales = getattr(vecbuffer[0], "scales", None) if hasattr(vecbuffer, "__getitem__") else getattr(vecbuffer, "scales", None)
+    if scales and getattr(scales, "x", None) is not None and getattr(scales, "y", None) is not None:
+        # Build from slope/offset; assume uniform spacing
+        sample = vecbuffer[0].as_masked_array()
+        h, w = sample["u"].shape  # use any component for shape
+        x_axis = scales.x.offset + scales.x.slope * np.arange(w)
+        y_axis = scales.y.offset + scales.y.slope * np.arange(h)
+        return x_axis, y_axis
+
+    raise RuntimeError("Could not find grid or scales on vector buffer; calibration metadata missing.")
+
+
+def interpolate_vector_field(
+    u: np.ndarray,
+    v: np.ndarray,
+    w: np.ndarray,
+    x_axis: np.ndarray,
+    y_axis: np.ndarray,
+    target_x: np.ndarray,
+    target_y: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Interpolate u/v/w onto target_x/target_y using linear interpolation."""
+    # Ensure axes ascending and fields aligned
+    y_axis, u = ensure_axis_ascending(y_axis, u, axis_index=0)
+    y_axis, v = ensure_axis_ascending(y_axis, v, axis_index=0)
+    y_axis, w = ensure_axis_ascending(y_axis, w, axis_index=0)
+    x_axis, u = ensure_axis_ascending(x_axis, u, axis_index=1)
+    x_axis, v = ensure_axis_ascending(x_axis, v, axis_index=1)
+    x_axis, w = ensure_axis_ascending(x_axis, w, axis_index=1)
+
+    tgt_y, tgt_x = np.meshgrid(target_y, target_x, indexing="ij")
+    points = np.stack([tgt_y.ravel(), tgt_x.ravel()], axis=-1)
+
+    def interp_component(comp: np.ndarray) -> np.ndarray:
+        fn = RegularGridInterpolator((y_axis, x_axis), comp, bounds_error=False, fill_value=np.nan)
+        return fn(points).reshape(len(target_y), len(target_x)).astype(np.float32)
+
+    return interp_component(u), interp_component(v), interp_component(w)
+
+
+# -------------------------
+# Main processing
+# -------------------------
+
+
+def collate_vectors_to_grid(
+    head_a_path: Path,
+    head_b_path: Path,
+    target_x: np.ndarray = TARGET_X,
+    target_y: np.ndarray = TARGET_Y,
+    offset: int = 0,
+    limit: Optional[int] = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Read two vector sets, interleave frames A/B, and interpolate onto target grid.
+    """
+    if offset < 0:
+        raise ValueError("offset must be non-negative")
+
+    try:
+        set_a = lv.read_set(str(head_a_path))
+        set_b = lv.read_set(str(head_b_path))
+    except Exception as exc:
+        raise RuntimeError(f"Failed to read vector sets: {exc}") from exc
+
+    available_pairs = min(len(set_a), len(set_b))
+    total_frames = available_pairs * 2
+    if offset >= total_frames:
+        raise ValueError(f"Offset {offset} exceeds available frame count {total_frames}.")
+    total_frames -= offset
+    if limit is not None:
+        total_frames = min(total_frames, limit)
+    if total_frames <= 0:
+        raise ValueError("No frames to process after offset/limit.")
+
+    ny, nx = len(target_y), len(target_x)
+    all_u = np.zeros((ny, nx, total_frames), dtype=np.float32)
+    all_v = np.zeros_like(all_u)
+    all_w = np.zeros_like(all_u)
+
+    for global_idx in range(offset, offset + total_frames):
+        source_set = set_a if global_idx % 2 == 0 else set_b
+        source_idx = global_idx // 2
+        head_label = "A" if global_idx % 2 == 0 else "B"
+        try:
+            vecbuffer = source_set[source_idx]
+            vec_data = vecbuffer[0].as_masked_array()
+            x_axis, y_axis = extract_axes_from_vecbuffer(vecbuffer)
+            u = np.array(vec_data["u"], dtype=np.float32)
+            v = np.array(vec_data["v"], dtype=np.float32)
+            w = np.array(vec_data["w"], dtype=np.float32)
+            u_i, v_i, w_i = interpolate_vector_field(u, v, w, x_axis, y_axis, target_x, target_y)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to process frame {global_idx} (head {head_label}, source idx {source_idx}): {exc}"
+            ) from exc
+
+        frame_idx = global_idx - offset
+        all_u[:, :, frame_idx] = u_i
+        all_v[:, :, frame_idx] = v_i
+        all_w[:, :, frame_idx] = w_i
+
+    return all_u, all_v, all_w
+
+
+def save_stacks(save_dir: Path, base_name: str, u: np.ndarray, v: np.ndarray, w: np.ndarray) -> None:
+    save_dir.mkdir(parents=True, exist_ok=True)
+    np.save(save_dir / f"{base_name}u.npy", u.astype(np.float32, copy=False))
+    np.save(save_dir / f"{base_name}v.npy", v.astype(np.float32, copy=False))
+    np.save(save_dir / f"{base_name}w.npy", w.astype(np.float32, copy=False))
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+    # Hard-coded paths: adjust to your dataset
+    save_dir = Path("E:/sPIV_PLIF_processedData/")
+    save_name = "8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_"
+    piv_dir = Path("D:/PIV_20Hz_data/")
+    piv_path1 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L1/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso/CopySelected_L1/StereoPIV_MPd(2x12x12_75%ov)_01.set"
+    piv_path2 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L2/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso/CopySelected_L2/StereoPIV_MPd(2x12x12_75%ov).set"
+
+    logger.info("Processing %s and %s onto target grid %s..%s mm", piv_path1, piv_path2, TARGET_MIN_MM, TARGET_MAX_MM)
+    u_stack, v_stack, w_stack = collate_vectors_to_grid(piv_path1, piv_path2)
+    save_stacks(save_dir, save_name, u_stack, v_stack, w_stack)
+    logger.info("Saved stacks to %s", save_dir)
