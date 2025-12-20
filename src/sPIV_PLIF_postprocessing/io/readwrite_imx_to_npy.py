@@ -2,7 +2,8 @@
 Collate alternating frames from two LaVision .imx/.set files into a single NumPy stack.
 
 Accepts paired lists of files so multiple datasets (two laser heads each) can
-be converted in one run.
+be converted in one run. Frames are trimmed/interpolated onto a square
+physical grid using the calibration/scaling stored in the source files.
 """
 
 from __future__ import annotations
@@ -16,8 +17,61 @@ from typing import Optional, Sequence
 import lvpyio as lv  # LaVision's package for importing .imx/.vc7 files
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.interpolate import RegularGridInterpolator
 
 logger = logging.getLogger(__name__)
+
+# Target grid in millimeters
+TARGET_MIN_MM = -149.5
+TARGET_MAX_MM = 149.5
+TARGET_STEP_MM = 0.5
+TARGET_X = np.arange(TARGET_MIN_MM, TARGET_MAX_MM + TARGET_STEP_MM / 2, TARGET_STEP_MM)
+TARGET_Y = np.arange(TARGET_MIN_MM, TARGET_MAX_MM + TARGET_STEP_MM / 2, TARGET_STEP_MM)
+
+
+def ensure_axis_ascending(axis: np.ndarray, frame: np.ndarray, axis_index: int) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Ensure the physical axis is ascending; reverse data if needed.
+    """
+    if axis.size >= 2 and axis[1] < axis[0]:
+        axis = axis[::-1]
+        frame = frame[:, ::-1] if axis_index == 1 else frame[::-1, :]
+    return axis, frame
+
+
+def extract_frame_and_axes(buffer) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Get frame data (float32, masked -> NaN) and physical x/y axes from a buffer.
+    """
+    arr = buffer.as_masked_array()
+    frame = np.array(arr.filled(np.nan), dtype=np.float32)
+    x_scale = buffer.scales.x
+    y_scale = buffer.scales.y
+    x_axis = x_scale.offset + x_scale.slope * np.arange(frame.shape[1])
+    y_axis = y_scale.offset + y_scale.slope * np.arange(frame.shape[0])
+    return frame, x_axis, y_axis
+
+
+def interpolate_frame_to_target(
+    frame: np.ndarray,
+    x_axis: np.ndarray,
+    y_axis: np.ndarray,
+    target_x: np.ndarray,
+    target_y: np.ndarray,
+) -> np.ndarray:
+    x_axis, frame = ensure_axis_ascending(x_axis, frame, axis_index=1)
+    y_axis, frame = ensure_axis_ascending(y_axis, frame, axis_index=0)
+
+    interp_fn = RegularGridInterpolator(
+        (y_axis, x_axis),
+        frame,
+        bounds_error=False,
+        fill_value=np.nan,
+    )
+    tgt_y, tgt_x = np.meshgrid(target_y, target_x, indexing="ij")
+    points = np.stack([tgt_y.ravel(), tgt_x.ravel()], axis=-1)
+    interpolated = interp_fn(points).reshape(len(target_y), len(target_x))
+    return interpolated.astype(np.float32)
 
 
 def collate_heads(
@@ -25,11 +79,11 @@ def collate_heads(
     head_b_path: Path,
     offset: int = 0,
     limit: Optional[int] = None,
+    target_x: np.ndarray = TARGET_X,
+    target_y: np.ndarray = TARGET_Y,
 ) -> np.ndarray:
     """
-    Read two .imx/.set files (head A/B) and interleave frames into one ndarray.
-
-    Frames are assumed to alternate A, B, A, B, ...; an offset can drop the first N frames.
+    Read two .imx/.set files (head A/B), interleave frames, and interpolate onto a square grid.
     """
     if offset < 0:
         raise ValueError("offset must be non-negative")
@@ -54,29 +108,22 @@ def collate_heads(
     if total_frames == 0:
         raise ValueError("No frames remain after applying offset and limit.")
 
-    # Use whichever head we start with to define the array shape.
-    sample_set = set_a if offset % 2 == 0 else set_b
-    sample_index = offset // 2
-    try:
-        sample_array = sample_set[sample_index].as_masked_array().data
-    except Exception as exc:
-        raise RuntimeError(f"Failed to read sample frame for shape inspection: {exc}") from exc
-
-    combined = np.zeros((*sample_array.shape, total_frames), dtype=np.float32)
+    combined = np.zeros((len(target_y), len(target_x), total_frames), dtype=np.float32)
 
     for global_idx in range(offset, offset + total_frames):
         source_set = set_a if global_idx % 2 == 0 else set_b
         source_idx = global_idx // 2
         try:
             buffer = source_set[source_idx]
-            frame = buffer.as_masked_array().data
+            frame, x_axis, y_axis = extract_frame_and_axes(buffer)
+            interp_frame = interpolate_frame_to_target(frame, x_axis, y_axis, target_x, target_y)
         except Exception as exc:
             raise RuntimeError(
-                f"Failed to read frame {global_idx} (source index {source_idx}) "
+                f"Failed to read/interpolate frame {global_idx} (source index {source_idx}) "
                 f"from {'head A' if global_idx % 2 == 0 else 'head B'}: {exc}"
             ) from exc
 
-        combined[:, :, global_idx - offset] = frame
+        combined[:, :, global_idx - offset] = interp_frame
 
     return combined
 
@@ -310,7 +357,7 @@ def main() -> None:
             continue
 
         try:
-            np.save(output_path, combined_data)
+            np.save(output_path, combined_data.astype(np.float32, copy=False))
             logger.info("Saved combined stack %s with shape %s", output_path, combined_data.shape)
         except Exception as exc:
             logger.error("Failed to save %s: %s", output_path, exc)
