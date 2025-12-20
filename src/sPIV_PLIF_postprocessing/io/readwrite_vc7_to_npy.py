@@ -45,25 +45,35 @@ def extract_axes_from_vecbuffer(vecbuffer) -> tuple[np.ndarray, np.ndarray]:
     Try to pull 1D physical axes from a vector buffer.
     Prefer grid.x/grid.y if present; fall back to scales.x/scales.y.
     """
+    sample = vecbuffer[0].as_masked_array()
+    h, w = sample["u"].shape
+
     grid = getattr(vecbuffer[0], "grid", None) if hasattr(vecbuffer, "__getitem__") else getattr(vecbuffer, "grid", None)
     if grid and getattr(grid, "x", None) is not None and getattr(grid, "y", None) is not None:
         gx = np.array(grid.x)
         gy = np.array(grid.y)
-        if gx.ndim == 2:
-            x_axis = gx[0, :]
-        else:
-            x_axis = gx.ravel()
-        if gy.ndim == 2:
-            y_axis = gy[:, 0]
-        else:
-            y_axis = gy.ravel()
+        # Try to coerce into 1D axes matching the component dimensions
+        def coerce_axis(arr: np.ndarray, expected_len: int, which: str) -> np.ndarray:
+            if arr.ndim == 1 and arr.size == expected_len:
+                return arr
+            if arr.ndim == 2:
+                if arr.shape == (1, expected_len):
+                    return arr.reshape(-1)
+                if arr.shape == (expected_len, 1):
+                    return arr.reshape(-1)
+                if arr.shape[1] == expected_len:
+                    return arr[0, :]
+                if arr.shape[0] == expected_len:
+                    return arr[:, 0]
+            raise RuntimeError(f"Grid {which}-axis has shape {arr.shape}, cannot match length {expected_len}.")
+
+        x_axis = coerce_axis(gx, w, "x")
+        y_axis = coerce_axis(gy, h, "y")
         return x_axis, y_axis
 
     scales = getattr(vecbuffer[0], "scales", None) if hasattr(vecbuffer, "__getitem__") else getattr(vecbuffer, "scales", None)
     if scales and getattr(scales, "x", None) is not None and getattr(scales, "y", None) is not None:
         # Build from slope/offset; assume uniform spacing
-        sample = vecbuffer[0].as_masked_array()
-        h, w = sample["u"].shape  # use any component for shape
         x_axis = scales.x.offset + scales.x.slope * np.arange(w)
         y_axis = scales.y.offset + scales.y.slope * np.arange(h)
         return x_axis, y_axis
@@ -81,6 +91,10 @@ def interpolate_vector_field(
     target_y: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Interpolate u/v/w onto target_x/target_y using linear interpolation."""
+    if x_axis.size != u.shape[1] or y_axis.size != u.shape[0]:
+        raise ValueError(
+            f"Axis lengths (x={x_axis.size}, y={y_axis.size}) do not match field shape {u.shape}."
+        )
     # Ensure axes ascending and fields aligned
     y_axis, u = ensure_axis_ascending(y_axis, u, axis_index=0)
     y_axis, v = ensure_axis_ascending(y_axis, v, axis_index=0)
