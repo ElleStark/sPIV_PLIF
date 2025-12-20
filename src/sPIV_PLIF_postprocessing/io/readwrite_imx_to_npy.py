@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -119,14 +120,19 @@ def parse_args() -> argparse.Namespace:
             "Provide matching lists for --head-a and --head-b to process multiple datasets."
         )
     )
-    parser.add_argument("--head-a", nargs="+", required=True, help="Paths to head-A .imx/.set files.")
-    parser.add_argument("--head-b", nargs="+", required=True, help="Paths to head-B .imx/.set files.")
+    parser.add_argument("--head-a", nargs="+", help="Paths to head-A .imx/.set files.")
+    parser.add_argument("--head-b", nargs="+", help="Paths to head-B .imx/.set files.")
+    parser.add_argument(
+        "--pairs-file",
+        type=Path,
+        help="Optional text file with lines: headA_path | headB_path | optional_name. Lines starting with # are ignored.",
+    )
     parser.add_argument(
         "--names",
         nargs="*",
         help="Optional output file names (without extension) for each dataset; must match number of inputs.",
     )
-    parser.add_argument("--save-dir", required=True, type=Path, help="Directory for output .npy files.")
+    parser.add_argument("--save-dir", type=Path, help="Directory for output .npy files.")
     parser.add_argument(
         "--qc-frames",
         nargs="*",
@@ -160,6 +166,81 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def prompt_for_missing_args(args: argparse.Namespace) -> argparse.Namespace:
+    """
+    Lightly interactive prompting for required inputs when running in a TTY.
+
+    If stdin is not a TTY, the function leaves args unchanged so batch runs fail fast.
+    """
+    if not sys.stdin.isatty():
+        return args
+
+    if not args.pairs_file and (not args.head_a or not args.head_b):
+        print("No input files supplied. Provide a pairs file or head-A/head-B lists.")
+        use_pairs = input("Use pairs file? [y/N]: ").strip().lower().startswith("y")
+        if use_pairs:
+            pf = input("Path to pairs file: ").strip()
+            if pf:
+                args.pairs_file = Path(pf)
+        else:
+            head_a_raw = input("Head-A paths (comma-separated): ").strip()
+            head_b_raw = input("Head-B paths (comma-separated): ").strip()
+            if head_a_raw:
+                args.head_a = [p.strip() for p in head_a_raw.split(",") if p.strip()]
+            if head_b_raw:
+                args.head_b = [p.strip() for p in head_b_raw.split(",") if p.strip()]
+            names_raw = input("Optional names (comma-separated, leave blank for auto): ").strip()
+            if names_raw:
+                args.names = [n.strip() for n in names_raw.split(",") if n.strip()]
+
+    if args.save_dir is None:
+        save_dir_raw = input("Output directory for .npy files: ").strip()
+        if save_dir_raw:
+            args.save_dir = Path(save_dir_raw)
+
+    return args
+
+
+def load_pairs_from_file(path: Path) -> Tuple[Sequence[Path], Sequence[Path], Sequence[str]]:
+    """
+    Read a simple text file where each non-empty, non-comment line is:
+    headA_path | headB_path | optional_name
+    """
+    head_a: list[Path] = []
+    head_b: list[Path] = []
+    names: list[str] = []
+
+    if not path.exists():
+        raise FileNotFoundError(f"Pairs file not found: {path}")
+
+    with path.open("r", encoding="utf-8") as fh:
+        for line_no, raw_line in enumerate(fh, start=1):
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            parts = [p.strip() for p in line.split("|")]
+            if len(parts) < 2:
+                raise ValueError(f"Line {line_no} in {path} must have at least headA | headB")
+
+            head_a.append(Path(parts[0]))
+            head_b.append(Path(parts[1]))
+            if len(parts) >= 3 and parts[2]:
+                names.append(parts[2])
+
+    # If some lines had names and others did not, ensure alignment
+    if names and len(names) != len(head_a):
+        raise ValueError(
+            f"Found {len(names)} names for {len(head_a)} datasets in {path}; "
+            "either provide names on all lines or none."
+        )
+
+    if not head_a:
+        raise ValueError(f"No usable dataset lines found in {path}")
+
+    return head_a, head_b, names
+
+
 def validate_inputs(head_a: Sequence[Path], head_b: Sequence[Path], names: Sequence[str]) -> None:
     if len(head_a) != len(head_b):
         raise ValueError(f"Need the same number of head-A and head-B files (got {len(head_a)} vs {len(head_b)}).")
@@ -173,20 +254,40 @@ def validate_inputs(head_a: Sequence[Path], head_b: Sequence[Path], names: Seque
 
 def main() -> None:
     args = parse_args()
+    args = prompt_for_missing_args(args)
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
 
-    head_a_paths = [Path(p) for p in args.head_a]
-    head_b_paths = [Path(p) for p in args.head_b]
-    names = args.names or []
+    head_a_paths: Sequence[Path]
+    head_b_paths: Sequence[Path]
+    names: Sequence[str]
+
+    if args.pairs_file:
+        try:
+            head_a_paths, head_b_paths, names_from_file = load_pairs_from_file(args.pairs_file)
+        except Exception as exc:
+            logger.error("Failed to read pairs file: %s", exc)
+            raise SystemExit(1) from exc
+        names = names_from_file or (args.names or [])
+    else:
+        if not args.head_a or not args.head_b:
+            logger.error("Provide --head-a and --head-b lists, or --pairs-file.")
+            raise SystemExit(1)
+        head_a_paths = [Path(p) for p in args.head_a]
+        head_b_paths = [Path(p) for p in args.head_b]
+        names = args.names or []
 
     try:
         validate_inputs(head_a_paths, head_b_paths, names)
     except Exception as exc:
         logger.error(exc)
         raise SystemExit(1) from exc
+
+    if args.save_dir is None:
+        logger.error("Output directory (--save-dir) is required.")
+        raise SystemExit(1)
 
     args.save_dir.mkdir(parents=True, exist_ok=True)
     qc_dir: Optional[Path] = None
