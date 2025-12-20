@@ -12,7 +12,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Tuple
 
 import lvpyio as lv  # LaVision's package for importing .imx/.vc7 files
 import matplotlib.pyplot as plt
