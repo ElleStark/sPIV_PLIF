@@ -45,31 +45,8 @@ def extract_axes_from_vecbuffer(vecbuffer) -> tuple[np.ndarray, np.ndarray]:
     Try to pull 1D physical axes from a vector buffer.
     Prefer grid.x/grid.y if present; fall back to scales.x/scales.y.
     """
-    sample = vecbuffer[0].as_masked_array()
-    h, w = sample["u"].shape
-
-    grid = getattr(vecbuffer[0], "grid", None) if hasattr(vecbuffer, "__getitem__") else getattr(vecbuffer, "grid", None)
-    if grid and getattr(grid, "x", None) is not None and getattr(grid, "y", None) is not None:
-        gx = np.array(grid.x)
-        gy = np.array(grid.y)
-        # Try to coerce into 1D axes matching the component dimensions
-        def coerce_axis(arr: np.ndarray, expected_len: int, which: str) -> np.ndarray:
-            if arr.ndim == 1 and arr.size == expected_len:
-                return arr
-            if arr.ndim == 2:
-                if arr.shape == (1, expected_len):
-                    return arr.reshape(-1)
-                if arr.shape == (expected_len, 1):
-                    return arr.reshape(-1)
-                if arr.shape[1] == expected_len:
-                    return arr[0, :]
-                if arr.shape[0] == expected_len:
-                    return arr[:, 0]
-            raise RuntimeError(f"Grid {which}-axis has shape {arr.shape}, cannot match length {expected_len}.")
-
-        x_axis = coerce_axis(gx, w, "x")
-        y_axis = coerce_axis(gy, h, "y")
-        return x_axis, y_axis
+    sample = vecbuffer[0]
+    h, w = sample.shape
 
     scales = getattr(vecbuffer[0], "scales", None) if hasattr(vecbuffer, "__getitem__") else getattr(vecbuffer, "scales", None)
     if scales and getattr(scales, "x", None) is not None and getattr(scales, "y", None) is not None:
@@ -159,11 +136,16 @@ def collate_vectors_to_grid(
         head_label = "A" if global_idx % 2 == 0 else "B"
         try:
             vecbuffer = source_set[source_idx]
-            vec_data = vecbuffer[0].as_masked_array()
+            vec_data = vecbuffer[0]
+            depth = len(vec_data)
+            planes = [vec_data.as_masked_array(plane=i) for i in range(depth)]
             x_axis, y_axis = extract_axes_from_vecbuffer(vecbuffer)
-            u = np.array(vec_data["u"], dtype=np.float32)
-            v = np.array(vec_data["v"], dtype=np.float32)
-            w = np.array(vec_data["w"], dtype=np.float32)
+            u = np.ma.array([plane["u"] for plane in planes], dtype=np.float32)
+            u = np.squeeze(u)
+            v = np.ma.array([plane["v"] for plane in planes], dtype=np.float32)
+            v = np.squeeze(v)
+            w = np.ma.array([plane["w"] for plane in planes], dtype=np.float32)
+            w = np.squeeze(w)
             u_i, v_i, w_i = interpolate_vector_field(u, v, w, x_axis, y_axis, target_x, target_y)
         except Exception as exc:
             raise RuntimeError(
@@ -189,11 +171,11 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     # Hard-coded paths: adjust to your dataset
-    save_dir = Path("E:/sPIV_PLIF_processedData/")
-    save_name = "8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_"
-    piv_dir = Path("D:/PIV_20Hz_data/")
-    piv_path1 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L1/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso/CopySelected_L1/StereoPIV_MPd(2x12x12_75%ov)_01.set"
-    piv_path2 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L2/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso/CopySelected_L2/StereoPIV_MPd(2x12x12_75%ov).set"
+    save_dir = Path("I:/Processed_Data/PIV/")
+    save_name = "10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_"
+    piv_dir = Path("I:/10.01.2025_nearbed_L2/")
+    piv_path1 = piv_dir / "10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso/Copy_L2/SubOverTimeMin_sl=all_01/StereoPIV_MPd(2x12x12_75%ov)/Resize.set"
+    piv_path2 = piv_dir / "I:/10.01.2025_nearbed_L1/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso/Copy_L1/SubOverTimeMin_sl=all/StereoPIV_MPd(2x12x12_75%ov)/Resize.set"
 
     logger.info("Processing %s and %s onto target grid %s..%s mm", piv_path1, piv_path2, TARGET_MIN_MM, TARGET_MAX_MM)
     u_stack, v_stack, w_stack = collate_vectors_to_grid(piv_path1, piv_path2)
