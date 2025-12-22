@@ -27,7 +27,12 @@ def quiver_from_npy(
     out_path: Path,
     frame_idx: int = 0,
     stride: int = 10,
+    stride_x: Optional[int] = None,
+    stride_y: Optional[int] = None,
     scale: float = 50.0,
+    headwidth: float = 3.0,
+    headlength: float = 5.0,
+    tail_width: float = 0.002,
     x_coords: Optional[Sequence[float]] = None,
     y_coords: Optional[Sequence[float]] = None,
 ) -> None:
@@ -60,11 +65,14 @@ def quiver_from_npy(
     mask = np.isfinite(u_f) & np.isfinite(v_f)
     X, Y = np.meshgrid(x_coords, y_coords, indexing="xy")
 
-    X_s = X[::stride, ::stride]
-    Y_s = Y[::stride, ::stride]
-    u_s = u_f[::stride, ::stride]
-    v_s = v_f[::stride, ::stride]
-    mask_s = mask[::stride, ::stride]
+    sx = stride_x if stride_x is not None else stride
+    sy = stride_y if stride_y is not None else stride
+
+    X_s = X[::sy, ::sx]
+    Y_s = Y[::sy, ::sx]
+    u_s = u_f[::sy, ::sx]
+    v_s = v_f[::sy, ::sx]
+    mask_s = mask[::sy, ::sx]
 
     X_s = X_s[mask_s]
     Y_s = Y_s[mask_s]
@@ -81,8 +89,10 @@ def quiver_from_npy(
         angles="xy",
         scale_units="xy",
         scale=scale,
-        width=0.002,
+        width=tail_width,
         pivot="mid",
+        headwidth=headwidth,
+        headlength=headlength,
     )
     plt.xlabel("x")
     plt.ylabel("y")
