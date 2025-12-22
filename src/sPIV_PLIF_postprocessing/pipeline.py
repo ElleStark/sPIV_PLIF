@@ -11,7 +11,7 @@ import logging
 
 from . import io_helpers
 from . import process
-from . import viz
+from .visualization import viz
 
 
 logger = logging.getLogger("sPIV_PLIF.pipeline")

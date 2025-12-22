@@ -379,10 +379,10 @@ if __name__ == "__main__":
 
     # Hard-coded paths: adjust to your dataset
     save_dir = Path("E:/sPIV_PLIF_ProcessedData/PIV/")
-    save_name = "8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_55pctHe1.0_45pctair0.816_Iso_"
+    save_name = "9.26.2025_30cms_DiffusiveSource_smTG15cm_neuHe0.876_air0.941_PIV0.02_iso_"
     piv_dir = Path("D:/PIV_20Hz_data/")
-    piv_path1 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L1/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_55pctHe1.0_45pctair0.816_Iso/CopySelected_L1/StereoPIV_MPd(2x12x12_75%ov).set"
-    piv_path2 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L2/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_55pctHe1.0_45pctair0.816_Iso_L2/StereoPIV_MPd(2x12x12_75%ov).set"
+    piv_path1 = piv_dir / "9.26.2025_PIV_sourceconfig/9.26.2025_30cms_DiffusiveSource_smTG15cm_neuHe0.876_air0.941_PIV0.02_iso/Copy_L1/AddGeometricMask/StereoPIV_MPd(2x12x12_75%ov)/PostProc/AnisoSmooth_S=5_K21/DeleteMask/Resize/PostProc_interpolate.set"
+    piv_path2 = piv_dir / "9.26.2025_PIV_sourceconfig/9.26.2025_30cms_DiffusiveSource_smTG15cm_neuHe0.876_air0.941_PIV0.02_iso/Copy_L2/StereoPIV_MPd(2x12x12_75%ov)/Resize.set"
     vec_grid = 3 # spacing of the vectors in pixels
 
     logger.info("Processing %s and %s onto target grid %s..%s mm", piv_path1, piv_path2, TARGET_MIN_MM, TARGET_MAX_MM)
