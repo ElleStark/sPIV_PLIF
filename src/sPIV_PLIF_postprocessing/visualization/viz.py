@@ -32,7 +32,7 @@ def quiver_from_npy(
     scale: float = 50.0,
     headwidth: float = 3.0,
     headlength: float = 5.0,
-    tail_width: float = 0.002,
+    tailwidth: float = 0.002,
     x_coords: Optional[Sequence[float]] = None,
     y_coords: Optional[Sequence[float]] = None,
 ) -> None:
@@ -89,7 +89,7 @@ def quiver_from_npy(
         angles="xy",
         scale_units="xy",
         scale=scale,
-        width=tail_width,
+        width=tailwidth,
         pivot="mid",
         headwidth=headwidth,
         headlength=headlength,

@@ -37,6 +37,7 @@ def load_fields(
     *,
     enforce_float32: bool = True,
     mmap_mode: Optional[str] = None,
+    frame_idx: Optional[int] = None,
 ) -> FieldStacks:
     """
     Load u/v/w/c stacks from .npy files.
@@ -49,14 +50,25 @@ def load_fields(
         If True, cast arrays to float32 on load.
     mmap_mode : str or None
         Optional numpy memmap mode ('r' recommended) to reduce RAM usage.
+    frame_idx : int or None
+        Optional frame index to load a single 2D slice (z-axis). When set,
+        only that frame is read into memory instead of the full stack.
 
     Returns
     -------
     FieldStacks
         Container with u, v, w, c arrays.
     """
+    effective_mmap_mode = mmap_mode or ("r" if frame_idx is not None else None)
+
     def _load(path: Path) -> np.ndarray:
-        arr = np.load(path, mmap_mode=mmap_mode)
+        arr = np.load(path, mmap_mode=effective_mmap_mode)
+        if frame_idx is not None and arr.ndim == 3:
+            if frame_idx < 0 or frame_idx >= arr.shape[2]:
+                raise IndexError(f"frame {frame_idx} out of range for {path.name}")
+            # Materialize just the requested slice so we don't hold onto
+            # the memmap for the whole stack.
+            arr = np.array(arr[:, :, frame_idx], copy=True)
         if enforce_float32 and arr.dtype != np.float32:
             arr = arr.astype(np.float32, copy=False)
         return arr
