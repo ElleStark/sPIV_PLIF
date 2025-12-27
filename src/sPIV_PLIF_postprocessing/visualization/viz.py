@@ -252,6 +252,6 @@ def save_overlay_quiver(
     """Create an overlay figure and save to disk."""
     fig, _ = overlay_quiver_figure(u, v, c, **kwargs)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=200)
+    fig.savefig(out_path, dpi=600)
     plt.close(fig)
     logger.info("Saved overlay to %s", out_path)

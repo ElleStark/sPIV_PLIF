@@ -12,11 +12,11 @@ except ImportError:
     from src.sPIV_PLIF_postprocessing.io.readwrite_vc7_to_npy import TARGET_X, TARGET_Y
 
 # paths to the u and v velocity fields
-u_path = Path('E:/sPIV_PLIF_ProcessedData/PIV/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_u.npy')
-v_path = Path('E:/sPIV_PLIF_ProcessedData/PIV/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_v.npy')
+u_path = Path('E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_u.npy')
+v_path = Path('E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_v.npy')
 
 # v = np.load(v_path)
-# v = np.fliplr(v)  # flip the v velocity field 
+# v = np.flipud(v)  # flip the v velocity field 
 # np.save(v_path, v)  # save the flipped v velocity field back to the same file
 
 # plotting parameters

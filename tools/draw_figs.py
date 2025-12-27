@@ -22,12 +22,12 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_quiver
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 # -------------------------------------------------------------------
-U_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_u.npy")
-V_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_v.npy")
-W_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_w.npy")
-C_PATH = Path("E:/sPIV_PLIF_ProcessedData/PLIF/PLIF_baseline.npy")
-FRAME_IDX = 0
-OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/Baseline/overlay_frame{FRAME_IDX}.png")
+U_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/9.26.2025_30cms_smSource_smTG15cm_neuHe0.137_air0.147_PIV0.01_iso_u.npy")
+V_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/9.26.2025_30cms_smSource_smTG15cm_neuHe0.137_air0.147_PIV0.01_iso_v.npy")
+W_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/9.26.2025_30cms_smSource_smTG15cm_neuHe0.137_air0.147_PIV0.01_iso_w.npy")
+C_PATH = Path("E:/sPIV_PLIF_ProcessedData/PLIF/PLIF_small_source.npy")
+FRAME_IDX = 46 # frame index to plot
+OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/Small_source/overlay_frame{FRAME_IDX}.png")
 STRIDE_ROWS = 20  # stride along array rows (y dimension)
 STRIDE_COLS = 15  # stride along array columns (x dimension)
 SCALE = 0.04  # increase to shorten arrows
@@ -35,16 +35,16 @@ HEADWIDTH = 5.5  # optional, width of the arrow head
 HEADLENGTH = 6  # optional, length of the arrow head
 HEADAXISLENGTH = 4  # optional, length of the arrow head axis
 TAILWIDTH = 0.002  # optional, width of the arrow tail
-CMIN = 0.015  # minimum concentration for the colormap
+CMIN = 0.02  # minimum concentration for the colormap
 CMAX = 1
 X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
 Y_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
 USE_MEMMAP = False  # set True to load with mmap_mode='r'
 LOAD_FRAME_ONLY = True  # set True to read just FRAME_IDX instead of full stacks
 LOG_SCALE = True  # set True to plot concentration on a log scale
-ARROW_COLOR = "#5d554e"  # optional, color of the arrows
+ARROW_COLOR = "k"  # optional, color of the arrows
 CMAP_NAME = "cmr.rainforest_r"  # colormap name
-CMAP_SLICE = (0.0, 1)  # tuple of (start, end) fractions of the colormap
+CMAP_SLICE = (0.0, 0.75)  # tuple of (start, end) fractions of the colormap
 
 
 def main() -> None:
