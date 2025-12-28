@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = ROOT / "src"
@@ -22,15 +23,22 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 # -------------------------------------------------------------------
-MEAN_FIELDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_smSource.npz")
-OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/overlay_mean_smSource.png")
+MEAN_FIELDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_nearbed.npz")
+OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/overlay_mean_nearbed_rainbow.png")
 CMIN = 0.02
 CMAX = 1.0
 X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
 Y_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
-LOG_SCALE = True  # set True to plot concentration on a log scale
-CMAP_NAME = "cmr.rainforest_r"
-CMAP_SLICE = (0.0, 0.75)
+LOG_SCALE = True  # match instantaneous overlay defaults (linear scale)
+CMAP_NAME = "jet"  # jet for concentration to match instantaneous overlay
+CMAP_SLICE = (0.0, 1.0)
+C_UNDER: str | None = "white"  # fade in from white
+C_UNDER_TRANSITION: float | None = 0.08  # fraction of cmap for white->jet blend
+C_UNDER_START: float | None = 0.01
+C_UNDER_END: float | None = 0.02
+PCOLORMESH_ALPHA = 0.85  # reduce saturation/opacity of the concentration field
+APPLY_MEDIAN_SMOOTH = True
+MEDIAN_WINDOW = 3  # pixels
 CONTOUR_LEVELS: int | list[float] | None = None  # disable contours
 CONTOUR_COLOR = "#555555"
 CONTOUR_WIDTH = 0.75
@@ -40,21 +48,40 @@ CONTOUR_WIDTH_IN_BOX: float | None = 0.8
 CONTOUR_COLOR_IN_BOX: str | None = None  # slightly lighter than main color
 CONTOUR_CMAP: str | None = "cmr.ember"  # use cmasher ember gradient
 CONTOUR_CMAP_IN_BOX: str | None = "cmr.ember"
-CONTOUR_LABELS = True 
+CONTOUR_LABELS = False  # disable labels to align with instantaneous overlay style
 CONTOUR_LABELS_IN_BOX: bool | None = False
 SHOW_QUIVER = True  # enable arrows
-QUIVER_CMAP: str | None = "cmr.ember"
+QUIVER_CMAP: str | None = "cmr.neutral"
+QUIVER_COLOR = "#333333"  # medium gray arrows for non-cmap path
 QUIVER_COLORBAR = True
 QUIVER_ALPHA = 1.0
-QUIVER_VMIN: float | None = 0.1  # set to fix arrow color scale 
-QUIVER_VMAX: float | None = 0.45  # set to fix arrow color scale max
-stride_rows = 30  # stride along array rows (y dimension)
-stride_cols = 20  # stride along array columns (x dimension)
-scale = 0.03  # increase to shorten arrows
-headwidth = 4.5  # optional, width of the arrow head
-headlength = 5  # optional, length of the arrow head
-headaxislength = 3.5  # optional, length of the arrow head axis
-tailwidth = 0.003  # optional, width of the arrow tail
+QUIVER_VMIN: float | None = 0.1  # set to fix arrow color scale
+QUIVER_VMAX: float | None = 0.5  # set to match instantaneous overlay max
+STRIDE_ROWS = 30  # stride along array rows (y dimension)
+STRIDE_COLS = 20  # stride along array columns (x dimension)
+QUIVER_SCALE = 0.03  # increase to shorten arrows
+QUIVER_HEADWIDTH = 4.5  # width of the arrow head
+QUIVER_HEADLENGTH = 5.0  # length of the arrow head
+QUIVER_HEADAXISLENGTH = 3.5  # length of the arrow head axis
+QUIVER_TAILWIDTH = 0.003  # width of the arrow tail
+
+
+def _median_smooth(arr: np.ndarray, k: int) -> np.ndarray:
+    """Apply a kxk median filter (supports 2D/3D)."""
+    if k % 2 == 0 or k < 1:
+        raise ValueError("Median window size must be an odd positive integer.")
+
+    def _smooth2d(a: np.ndarray) -> np.ndarray:
+        pad = k // 2
+        padded = np.pad(a, pad_width=pad, mode="edge")
+        windows = sliding_window_view(padded, (k, k))
+        return np.nanmedian(windows, axis=(-2, -1))
+
+    if arr.ndim == 2:
+        return _smooth2d(arr)
+    if arr.ndim == 3:
+        return np.stack([_smooth2d(arr[:, :, i]) for i in range(arr.shape[2])], axis=2)
+    raise ValueError(f"Median smooth expects 2D or 3D input; got shape {arr.shape}")
 
 
 def main() -> None:
@@ -69,6 +96,7 @@ def main() -> None:
     u_mean = np.array(mean_data["u"], copy=False)
     v_mean = np.array(mean_data["v"], copy=False)
     c_mean = np.array(mean_data["c"], copy=False)
+    c_mean = _median_smooth(c_mean, MEDIAN_WINDOW) if APPLY_MEDIAN_SMOOTH else c_mean
 
     x_coords = np.load(X_PATH) if X_PATH else None
     y_coords = np.load(Y_PATH) if Y_PATH else None
@@ -113,19 +141,25 @@ def main() -> None:
         contour_cmap_in_box=CONTOUR_CMAP_IN_BOX,
         contour_labels=CONTOUR_LABELS,
         contour_labels_in_box=CONTOUR_LABELS_IN_BOX,
+        cmap_under=C_UNDER,
+        cmap_under_transition=C_UNDER_TRANSITION,
+        cmap_under_start=C_UNDER_START,
+        cmap_under_end=C_UNDER_END,
+        pcolormesh_alpha=PCOLORMESH_ALPHA,
         show_quiver=SHOW_QUIVER,
         quiver_cmap=QUIVER_CMAP,
+        quiver_color=QUIVER_COLOR,
         quiver_colorbar=QUIVER_COLORBAR,
         quiver_alpha=QUIVER_ALPHA,
         quiver_vmin=QUIVER_VMIN,
         quiver_vmax=QUIVER_VMAX,
-        stride_rows=stride_rows,
-        stride_cols=stride_cols,
-        quiver_scale=scale,
-        quiver_headwidth=headwidth,
-        quiver_headlength=headlength,
-        quiver_headaxislength=headaxislength,
-        quiver_tailwidth=tailwidth,
+        stride_rows=STRIDE_ROWS,
+        stride_cols=STRIDE_COLS,
+        quiver_scale=QUIVER_SCALE,
+        quiver_headwidth=QUIVER_HEADWIDTH,
+        quiver_headlength=QUIVER_HEADLENGTH,
+        quiver_headaxislength=QUIVER_HEADAXISLENGTH,
+        quiver_tailwidth=QUIVER_TAILWIDTH,
     )
     print(f"Saved mean overlay to {OUT_PATH}")
 
