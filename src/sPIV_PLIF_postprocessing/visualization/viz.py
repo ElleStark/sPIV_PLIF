@@ -567,3 +567,83 @@ def save_overlay_contour(
     fig.savefig(out_path, dpi=600)
     plt.close(fig)
     logger.info("Saved contour overlay to %s", out_path)
+
+
+def _nearest_index(values: Sequence[float], target: float) -> tuple[int, float]:
+    """Return index of the closest value to target and the matched value."""
+    arr = np.asarray(values)
+    idx = int(np.argmin(np.abs(arr - target)))
+    return idx, float(arr[idx])
+
+
+def plot_lateral_profiles(
+    cases: Sequence[tuple[str, np.ndarray]],
+    x_coords: Sequence[float],
+    y_coords: Sequence[float],
+    target_y: float,
+    *,
+    out_path: Path,
+    title: Optional[str] = None,
+    xlabel: str = "x",
+    ylabel: str = "Mean concentration",
+    figsize: tuple[float, float] = (8.0, 5.0),
+    dpi: int = 300,
+    legend: bool = True,
+    grid: bool = True,
+    normalize_to_max: bool = False,
+) -> None:
+    """
+    Plot lateral (x-direction) mean concentration profiles for multiple cases at a given y.
+
+    Parameters
+    ----------
+    cases
+        Sequence of (label, c_mean_array) pairs. Arrays must be 2D (y, x).
+    x_coords, y_coords
+        Coordinate arrays matching the dimensions of the mean fields.
+    target_y
+        Downstream distance (same units as y_coords) at which to extract the profile.
+    """
+    if len(cases) == 0:
+        raise ValueError("No cases provided for plotting.")
+
+    y_idx, y_match = _nearest_index(y_coords, target_y)
+    x_coords_arr = np.asarray(x_coords)
+
+    profiles: list[tuple[str, np.ndarray]] = []
+    for label, c_mean in cases:
+        if c_mean.ndim != 2:
+            raise ValueError(f"{label} mean concentration must be 2D (y, x); got shape {c_mean.shape}")
+        if c_mean.shape != (len(y_coords), len(x_coords)):
+            raise ValueError(
+                f"{label} mean concentration shape {c_mean.shape} does not match coordinate grid "
+                f"({len(y_coords)}, {len(x_coords)})."
+            )
+        profiles.append((label, np.array(c_mean[y_idx, :], copy=False)))
+
+    plt.figure(figsize=figsize)
+    for label, profile in profiles:
+        mask = np.isfinite(profile)
+        y_vals = profile[mask]
+        if normalize_to_max:
+            if not np.any(mask):
+                raise ValueError(f"No finite values found for case '{label}' to normalize.")
+            case_max = float(np.nanmax(y_vals))
+            if case_max == 0.0:
+                raise ValueError(f"Maximum finite value is zero for case '{label}'; cannot normalize.")
+            y_vals = y_vals / case_max
+        plt.plot(x_coords_arr[mask], y_vals, label=label)
+
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel + (" (normalized per case)" if normalize_to_max else ""))
+    plot_title = title if title is not None else f"Mean concentration at y ≈ {y_match:.2f}"
+    plt.title(plot_title)
+    if grid:
+        plt.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.6)
+    if legend:
+        plt.legend()
+    plt.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=dpi)
+    plt.close()
+    logger.info("Saved lateral profile plot at y=%.3f to %s (nearest y=%.3f, idx=%d)", target_y, out_path, y_match, y_idx)
