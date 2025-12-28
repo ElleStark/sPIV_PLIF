@@ -11,7 +11,7 @@ from typing import Any, Optional, Sequence, Tuple
 import cmasher as cmr
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm, Normalize, ListedColormap
 
 logger = logging.getLogger("sPIV_PLIF.viz")
 
@@ -128,7 +128,12 @@ def overlay_quiver_figure(
     title: Optional[str] = None,
     cmap_name: str = "cmr.rainforest_r",
     cmap_slice: Tuple[float, float] = (0.0, 0.65),
+    cmap_under: Optional[str] = None,
+    cmap_under_transition: Optional[float] = None,
+    cmap_under_start: Optional[float] = None,
+    cmap_under_end: Optional[float] = None,
     figsize: Tuple[float, float] = (8.0, 6.0),
+    pcolormesh_alpha: float = 1.0,
     arrow_color: str = "k",
 ) -> tuple[plt.Figure, plt.Axes]:
     """
@@ -177,8 +182,6 @@ def overlay_quiver_figure(
     if log_scale:
         mask_c &= c_f > 0  # LogNorm requires positive values
 
-    cmap = cmr.get_sub_cmap(cmap_name, *cmap_slice)
-
     norm = None
     if log_scale:
         if not np.any(mask_c):
@@ -194,6 +197,38 @@ def overlay_quiver_figure(
         vmax_kw = cmax
 
     fig, ax = plt.subplots(figsize=figsize)
+
+    cmap = cmr.get_sub_cmap(cmap_name, *cmap_slice)
+    if cmap_under is not None:
+        try:
+            cmap = cmap.copy()
+            cmap.set_under(cmap_under)
+        except Exception:
+            pass
+    if cmap_under_transition is not None and cmap_under_transition > 0:
+        transition_fraction = cmap_under_transition
+    elif cmap_under_start is not None and cmap_under_end is not None and norm is not None:
+        transition_fraction = float(norm(cmap_under_end) - norm(cmap_under_start))
+    else:
+        transition_fraction = None
+    if transition_fraction is not None and transition_fraction > 0:
+        try:
+            colors = cmap(np.linspace(0, 1, 256))
+            n_under = max(2, int(len(colors) * min(transition_fraction, 0.5)))
+            white = np.array([1.0, 1.0, 1.0, 1.0])
+            first_color = colors[0]
+            under_grad = np.stack(
+                [
+                    white * (1 - t) + first_color * t
+                    for t in np.linspace(0, 1, n_under, endpoint=True)
+                ],
+                axis=0,
+            )
+            colors = np.vstack([under_grad, colors])
+            cmap = ListedColormap(colors)
+        except Exception:
+            pass
+
     h = ax.pcolormesh(
         X,
         Y,
@@ -203,6 +238,7 @@ def overlay_quiver_figure(
         vmin=vmin_kw,
         vmax=vmax_kw,
         norm=norm,
+        alpha=pcolormesh_alpha,
     )
     fig.colorbar(h, ax=ax, label="c")
 
@@ -255,3 +291,279 @@ def save_overlay_quiver(
     fig.savefig(out_path, dpi=600)
     plt.close(fig)
     logger.info("Saved overlay to %s", out_path)
+
+
+def overlay_contour_figure(
+    u: np.ndarray,
+    v: np.ndarray,
+    c: np.ndarray,
+    *,
+    frame_idx: Optional[int],
+    contour_levels: Optional[int | Sequence[float]] = 10,
+    contour_color: str = "k",
+    contour_width: float = 1.0,
+    contour_cmap: Optional[str] = None,
+    contour_labels: bool = True,
+    contour_box: Optional[Tuple[float, float, float, float]] = None,
+    contour_levels_in_box: Optional[int | Sequence[float]] = None,
+    contour_color_in_box: Optional[str] = None,
+    contour_width_in_box: Optional[float] = None,
+    contour_cmap_in_box: Optional[str] = None,
+    contour_labels_in_box: Optional[bool] = None,
+    show_quiver: bool = False,
+    stride_rows: int = 20,
+    stride_cols: int = 15,
+    quiver_scale: float = 0.04,
+    quiver_headwidth: float = 5.5,
+    quiver_headlength: float = 6.0,
+    quiver_headaxislength: float = 4.0,
+    quiver_tailwidth: float = 0.002,
+    quiver_color: str = "#c0c0c0",
+    quiver_cmap: Optional[str] = None,
+    quiver_vmin: Optional[float] = None,
+    quiver_vmax: Optional[float] = None,
+    quiver_colorbar: bool = False,
+    quiver_alpha: float = 0.8,
+    cmin: Optional[float] = 0.01,
+    cmax: Optional[float] = 1.0,
+    x_coords: Optional[Sequence[float]] = None,
+    y_coords: Optional[Sequence[float]] = None,
+    log_scale: bool = True,
+    title: Optional[str] = None,
+    cmap_name: str = "cmr.rainforest_r",
+    cmap_slice: Tuple[float, float] = (0.0, 0.65),
+    cmap_under: Optional[str] = None,
+    cmap_under_transition: Optional[float] = None,
+    cmap_under_start: Optional[float] = None,
+    cmap_under_end: Optional[float] = None,
+    figsize: Tuple[float, float] = (8.0, 6.0),
+    pcolormesh_alpha: float = 1.0,
+) -> tuple[plt.Figure, plt.Axes]:
+    """Overlay concentration colormap with velocity-magnitude contours."""
+
+    def _extract_frame(arr: np.ndarray, name: str) -> np.ndarray:
+        if arr.ndim == 2:
+            return arr
+        if arr.ndim == 3:
+            if frame_idx is None:
+                raise ValueError(f"{name} is 3D; provide frame_idx to select a slice.")
+            if frame_idx < 0 or frame_idx >= arr.shape[2]:
+                raise IndexError(f"frame_idx {frame_idx} out of range for {name} with {arr.shape[2]} frames")
+            return arr[:, :, frame_idx]
+        raise ValueError(f"{name} must be 2D or 3D; got shape {arr.shape}")
+
+    u_f = _extract_frame(u, "u")
+    v_f = _extract_frame(v, "v")
+    c_f = _extract_frame(c, "c")
+
+    if u_f.shape != v_f.shape:
+        raise ValueError(f"u and v shapes differ after slicing: {u_f.shape} vs {v_f.shape}")
+    if c_f.shape != u_f.shape:
+        raise ValueError(f"c shape {c_f.shape} must match velocity shape {u_f.shape}")
+
+    ny, nx = u_f.shape
+    if x_coords is None:
+        x_coords = np.arange(nx)
+    if y_coords is None:
+        y_coords = np.arange(ny)
+
+    if len(x_coords) != nx or len(y_coords) != ny:
+        raise ValueError("x_coords/y_coords length must match the data grid dimensions.")
+    if np.ndim(x_coords) != 1 or np.ndim(y_coords) != 1:
+        raise ValueError("x_coords and y_coords must be 1D sequences.")
+
+    X, Y = np.meshgrid(x_coords, y_coords, indexing="xy")
+
+    mask_vec = np.isfinite(u_f) & np.isfinite(v_f)
+    mask_c = np.isfinite(c_f)
+    if log_scale:
+        mask_c &= c_f > 0
+
+    norm = None
+    if log_scale:
+        if not np.any(mask_c):
+            raise ValueError("No positive concentration values available for log scale.")
+        data_pos = c_f[mask_c]
+        vmin = cmin if cmin is not None and cmin > 0 else float(np.nanmin(data_pos))
+        vmax = cmax if cmax is not None else float(np.nanmax(data_pos))
+        norm = LogNorm(vmin=vmin, vmax=vmax)
+        vmin_kw = None
+        vmax_kw = None
+    else:
+        vmin_kw = cmin
+        vmax_kw = cmax
+    cmap = cmr.get_sub_cmap(cmap_name, *cmap_slice)
+    if cmap_under is not None:
+        try:
+            cmap = cmap.copy()
+            cmap.set_under(cmap_under)
+        except Exception:
+            pass
+    if cmap_under_transition is not None and cmap_under_transition > 0:
+        transition_fraction = cmap_under_transition
+    elif cmap_under_start is not None and cmap_under_end is not None and norm is not None:
+        transition_fraction = float(norm(cmap_under_end) - norm(cmap_under_start))
+    else:
+        transition_fraction = None
+    if transition_fraction is not None and transition_fraction > 0:
+        try:
+            colors = cmap(np.linspace(0, 1, 256))
+            n_under = max(2, int(len(colors) * min(transition_fraction, 0.5)))
+            white = np.array([1.0, 1.0, 1.0, 1.0])
+            first_color = colors[0]
+            under_grad = np.stack(
+                [
+                    white * (1 - t) + first_color * t
+                    for t in np.linspace(0, 1, n_under, endpoint=True)
+                ],
+                axis=0,
+            )
+            colors = np.vstack([under_grad, colors])
+            cmap = ListedColormap(colors)
+        except Exception:
+            pass
+
+    fig, ax = plt.subplots(figsize=figsize)
+    h = ax.pcolormesh(
+        X,
+        Y,
+        np.ma.array(c_f, mask=~mask_c),
+        cmap=cmap,
+        shading="auto",
+        vmin=vmin_kw,
+        vmax=vmax_kw,
+        norm=norm,
+        alpha=pcolormesh_alpha,
+    )
+    fig.colorbar(h, ax=ax, label="c")
+
+    speed = np.sqrt(u_f ** 2 + v_f ** 2)
+    if contour_levels is not None:
+        # Main contours (outside box or whole domain if no box provided).
+        mask_out = mask_vec.copy()
+        mask_in = None
+        if contour_box is not None:
+            xmin, xmax, ymin, ymax = contour_box
+            in_box = (X >= xmin) & (X <= xmax) & (Y >= ymin) & (Y <= ymax)
+            mask_in = mask_vec & in_box
+            mask_out &= ~in_box
+
+        contour_kwargs = {
+            "levels": contour_levels,
+            "linewidths": contour_width,
+        }
+        if contour_cmap:
+            contour_kwargs["cmap"] = contour_cmap
+        else:
+            contour_kwargs["colors"] = contour_color
+
+        cs = ax.contour(
+            X,
+            Y,
+            np.ma.array(speed, mask=~mask_out),
+            **contour_kwargs,
+        )
+        if contour_labels:
+            ax.clabel(cs, inline=True, fontsize=8, fmt="%.2f")
+
+        # Optional lower-density contours inside the box.
+        if mask_in is not None and np.any(mask_in):
+            contour_kwargs_in = {
+                "levels": contour_levels_in_box or contour_levels,
+                "linewidths": contour_width_in_box or contour_width,
+            }
+            cmap_in = contour_cmap_in_box if contour_cmap_in_box is not None else contour_cmap
+            color_in = contour_color_in_box if contour_color_in_box is not None else contour_color
+            if cmap_in:
+                contour_kwargs_in["cmap"] = cmap_in
+            else:
+                contour_kwargs_in["colors"] = color_in
+
+            cs_in = ax.contour(
+                X,
+                Y,
+                np.ma.array(speed, mask=~mask_in),
+                **contour_kwargs_in,
+            )
+            if contour_labels_in_box if contour_labels_in_box is not None else contour_labels:
+                ax.clabel(cs_in, inline=True, fontsize=8, fmt="%.2f")
+
+    if show_quiver:
+        Xs = X[::stride_rows, ::stride_cols]
+        Ys = Y[::stride_rows, ::stride_cols]
+        us = u_f[::stride_rows, ::stride_cols]
+        vs = v_f[::stride_rows, ::stride_cols]
+        ms = mask_vec[::stride_rows, ::stride_cols]
+
+        Xs = Xs[ms]
+        Ys = Ys[ms]
+        us = us[ms]
+        vs = vs[ms]
+        speed_s = np.sqrt(us**2 + vs**2)
+        norm_q = None
+        if quiver_cmap is not None:
+            vmin_q = quiver_vmin if quiver_vmin is not None else float(np.nanmin(speed_s))
+            vmax_q = quiver_vmax if quiver_vmax is not None else float(np.nanmax(speed_s))
+            norm_q = Normalize(vmin=vmin_q, vmax=vmax_q)
+        if quiver_cmap is not None:
+            q = ax.quiver(
+                Xs,
+                Ys,
+                us,
+                vs,
+                speed_s,
+                angles="xy",
+                scale_units="xy",
+                scale=quiver_scale,
+                headwidth=quiver_headwidth,
+                headlength=quiver_headlength,
+                width=quiver_tailwidth,
+                headaxislength=quiver_headaxislength,
+                pivot="mid",
+                color=None,
+                cmap=quiver_cmap,
+                norm=norm_q,
+                alpha=quiver_alpha,
+            )
+        else:
+            q = ax.quiver(
+                Xs,
+                Ys,
+                us,
+                vs,
+                angles="xy",
+                scale_units="xy",
+                scale=quiver_scale,
+                headwidth=quiver_headwidth,
+                headlength=quiver_headlength,
+                width=quiver_tailwidth,
+                headaxislength=quiver_headaxislength,
+                pivot="mid",
+                color=quiver_color,
+                alpha=quiver_alpha,
+            )
+        if quiver_colorbar and quiver_cmap is not None:
+            fig.colorbar(q, ax=ax, label="|u|")
+
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    if title:
+        ax.set_title(title)
+    ax.set_aspect("equal", adjustable="box")
+    fig.tight_layout()
+    return fig, ax
+
+
+def save_overlay_contour(
+    u: np.ndarray,
+    v: np.ndarray,
+    c: np.ndarray,
+    out_path: Path,
+    **kwargs: Any,
+) -> None:
+    """Create a contour overlay figure and save to disk."""
+    fig, _ = overlay_contour_figure(u, v, c, **kwargs)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=600)
+    plt.close(fig)
+    logger.info("Saved contour overlay to %s", out_path)
