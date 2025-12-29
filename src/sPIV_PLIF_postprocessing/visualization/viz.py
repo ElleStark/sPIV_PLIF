@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any, Optional, Sequence, Tuple
+from itertools import cycle
 
 import cmasher as cmr
 import numpy as np
@@ -586,11 +587,18 @@ def plot_lateral_profiles(
     title: Optional[str] = None,
     xlabel: str = "x",
     ylabel: str = "Mean concentration",
-    figsize: tuple[float, float] = (8.0, 5.0),
+    figsize: tuple[float, float] = (4.0, 5.0),
     dpi: int = 300,
     legend: bool = True,
     grid: bool = True,
     normalize_to_max: bool = False,
+    line_color: Optional[str] = None,
+    linestyles: Optional[Sequence[str]] = None,
+    line_width: float = 1.0,
+    xlim: Optional[Tuple[float, float]] = None,
+    set_ylim_to_data_max: bool = False,
+    rows_to_average: int = 2,
+    ylim: Optional[Tuple[float, float]] = None,
 ) -> None:
     """
     Plot lateral (x-direction) mean concentration profiles for multiple cases at a given y.
@@ -603,11 +611,17 @@ def plot_lateral_profiles(
         Coordinate arrays matching the dimensions of the mean fields.
     target_y
         Downstream distance (same units as y_coords) at which to extract the profile.
+    rows_to_average
+        Number of rows to include on each side of the target index for averaging.
     """
     if len(cases) == 0:
         raise ValueError("No cases provided for plotting.")
 
     y_idx, y_match = _nearest_index(y_coords, target_y)
+    row_start = max(0, y_idx - rows_to_average)
+    row_end = min(len(y_coords), y_idx + rows_to_average + 1)
+    if row_end <= row_start:
+        raise ValueError(f"Invalid averaging window for y index {y_idx}")
     x_coords_arr = np.asarray(x_coords)
 
     profiles: list[tuple[str, np.ndarray]] = []
@@ -619,9 +633,14 @@ def plot_lateral_profiles(
                 f"{label} mean concentration shape {c_mean.shape} does not match coordinate grid "
                 f"({len(y_coords)}, {len(x_coords)})."
             )
-        profiles.append((label, np.array(c_mean[y_idx, :], copy=False)))
+        window = np.array(c_mean[row_start:row_end, :], copy=False)
+        if window.size == 0:
+            raise ValueError(f"No data in averaging window for {label}")
+        profiles.append((label, np.nanmean(window, axis=0)))
 
+    style_cycle = cycle(linestyles if linestyles is not None else ["solid", "dashed", "dashdot", "dotted"])
     plt.figure(figsize=figsize)
+    max_y_val = 0.0
     for label, profile in profiles:
         mask = np.isfinite(profile)
         y_vals = profile[mask]
@@ -632,10 +651,25 @@ def plot_lateral_profiles(
             if case_max == 0.0:
                 raise ValueError(f"Maximum finite value is zero for case '{label}'; cannot normalize.")
             y_vals = y_vals / case_max
-        plt.plot(x_coords_arr[mask], y_vals, label=label)
+        if y_vals.size:
+            max_y_val = max(max_y_val, float(np.nanmax(y_vals)))
+        plt.plot(
+            x_coords_arr[mask],
+            y_vals,
+            label=label,
+            color=line_color,
+            linestyle=next(style_cycle),
+            linewidth=line_width,
+        )
 
     plt.xlabel(xlabel)
     plt.ylabel(ylabel + (" (normalized per case)" if normalize_to_max else ""))
+    if xlim is not None:
+        plt.xlim(xlim)
+    if ylim is not None:
+        plt.ylim(ylim)
+    elif set_ylim_to_data_max and max_y_val > 0:
+        plt.ylim(0, max_y_val)
     plot_title = title if title is not None else f"Mean concentration at y ≈ {y_match:.2f}"
     plt.title(plot_title)
     if grid:
