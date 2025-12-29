@@ -23,22 +23,23 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 # -------------------------------------------------------------------
-U_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_u.npy")
-V_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_v.npy")
-W_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_w.npy")
-C_PATH = Path("E:/sPIV_PLIF_ProcessedData/PLIF/PLIF_nearbed.npy")
-OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/RMS/rms_overlay_nearbed.png")
-CMIN = 0.015
-CMAX = 1.0
+U_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_55pctHe1.0_45pctair0.816_Iso_u.npy")
+V_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_55pctHe1.0_45pctair0.816_Iso_v.npy")
+W_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/8.29_30cmsPWM2.25_smTG15cm_noHC_PIVairQ0.02_55pctHe1.0_45pctair0.816_Iso_w.npy")
+C_PATH = Path("E:/sPIV_PLIF_ProcessedData/PLIF/PLIF_buoyant_smoothed.npy")
+OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/RMS/rms_overlay_buoyant.png")
+CMIN = 0.004
+CMAX = 0.4
+RMS_OUT_DIR = Path("E:/sPIV_PLIF_ProcessedData/rms_fields")
 X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
 Y_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
-LOG_SCALE = False
+LOG_SCALE = True
 CMAP_NAME = "jet"
 CMAP_SLICE = (0.0, 1.0)
 C_UNDER: str | None = "white"
 C_UNDER_TRANSITION: float | None = 0.1
-C_UNDER_START: float | None = 0.01
-C_UNDER_END: float | None = 0.02
+C_UNDER_START: float | None = 1e-4
+C_UNDER_END: float | None = 5e-4
 PCOLORMESH_ALPHA = 0.85
 CONTOUR_LEVELS: int | list[float] | None = None
 CONTOUR_COLOR = "#555555"
@@ -94,10 +95,12 @@ def _median_smooth(arr: np.ndarray, k: int) -> np.ndarray:
 
 
 def _rms(arr: np.ndarray) -> np.ndarray:
-    """Compute RMS along the last axis (time)."""
+    """Compute RMS of fluctuations along the last axis (time)."""
     if arr.ndim != 3:
         raise ValueError(f"RMS expects 3D input; got shape {arr.shape}")
-    return np.sqrt(np.nanmean(np.square(arr), axis=2))
+    mean = np.nanmean(arr, axis=2, keepdims=True)
+    fluctuations = arr - mean
+    return np.sqrt(np.nanmean(np.square(fluctuations), axis=2))
 
 
 def main() -> None:
@@ -133,6 +136,10 @@ def main() -> None:
     v_rms = _rms(stacks.v)
     c_rms = _rms(stacks.c)
     c_rms = _median_smooth(c_rms, MEDIAN_WINDOW) if APPLY_MEDIAN_SMOOTH else c_rms
+    RMS_OUT_DIR.mkdir(parents=True, exist_ok=True)
+    np.save(RMS_OUT_DIR / "u_rms.npy", u_rms)
+    np.save(RMS_OUT_DIR / "v_rms.npy", v_rms)
+    np.save(RMS_OUT_DIR / "c_rms.npy", c_rms)
 
     save_overlay_contour(
         u_rms,
@@ -180,6 +187,7 @@ def main() -> None:
         quiver_tailwidth=QUIVER_TAILWIDTH,
     )
     print(f"Saved RMS overlay to {OUT_PATH}")
+    print(f"Saved RMS fields to {RMS_OUT_DIR}")
 
 
 if __name__ == "__main__":

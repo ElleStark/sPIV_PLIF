@@ -43,12 +43,12 @@ TARGET_Y_MM = [280.0, 150.0, 20.0]
 OUT_DIR = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/Profiles/Tests")
 XLABEL = "x (mm)"
 YLABEL = "Mean concentration"
-NORMALIZE_TO_MAX = False
+NORMALIZE_TO_MAX = True
 LINE_COLOR = "#000000"
 LINESTYLES = ["solid", "dashed", "dashdot", "dotted", (0, (3, 1, 1, 1))]
 LINE_WIDTH = 1.0
 XLIM = (-100, 100)
-SET_YLIM_TO_DATA_MAX = False
+SET_YLIM_TO_DATA_MAX = True
 ROWS_TO_AVERAGE = 40
 YLIM = (0.0, 1.0)
 
