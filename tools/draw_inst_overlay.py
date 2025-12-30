@@ -28,9 +28,9 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 U_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_u.npy")
 V_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_v.npy")
 W_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_w.npy")
-C_PATH = Path("E:/sPIV_PLIF_ProcessedData/PLIF/PLIF_nearbed.npy")
+C_PATH = Path("E:/sPIV_PLIF_ProcessedData/PLIF/PLIF_nearbed_smoothed.npy")
 FRAME_IDX = 2000  # frame index to plot
-OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/Nearbed/overlay_frame{FRAME_IDX}_rainbow_linear.png")
+OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/Nearbed/overlay_frame{FRAME_IDX}_rainbow.png")
 CMIN = 0.015
 CMAX = 1.0
 X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")

@@ -22,9 +22,8 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
-# -------------------------------------------------------------------
-MEAN_FIELDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_fractal.npz")
-OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/overlay_mean_fractal_smoothed.png")
+MEAN_FIELDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_buoyant.npz")
+OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/overlay_mean_buoyant_updated.png")
 CMIN = 0.015
 CMAX = 1.0
 X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
