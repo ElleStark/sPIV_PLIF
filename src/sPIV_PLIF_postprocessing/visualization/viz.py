@@ -14,6 +14,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize, ListedColormap
 
+from .gaussian_fit import fit_gaussian_least_squares
+
 logger = logging.getLogger("sPIV_PLIF.viz")
 
 
@@ -587,7 +589,7 @@ def plot_lateral_profiles(
     title: Optional[str] = None,
     xlabel: str = "x",
     ylabel: str = "Mean concentration",
-    figsize: tuple[float, float] = (4.0, 5.0),
+    figsize: tuple[float, float] = (5.0, 5.0),
     dpi: int = 300,
     legend: bool = True,
     grid: bool = True,
@@ -599,6 +601,7 @@ def plot_lateral_profiles(
     set_ylim_to_data_max: bool = False,
     rows_to_average: int = 2,
     ylim: Optional[Tuple[float, float]] = None,
+    fit_x_range: Optional[Tuple[float, float]] = None,
 ) -> None:
     """
     Plot lateral (x-direction) mean concentration profiles for multiple cases at a given y.
@@ -613,6 +616,9 @@ def plot_lateral_profiles(
         Downstream distance (same units as y_coords) at which to extract the profile.
     rows_to_average
         Number of rows to include on each side of the target index for averaging.
+    fit_x_range
+        Optional (xmin, xmax) bounds in which to perform Gaussian fitting; defaults to plotted range.
+        When a fit succeeds, x is re-parameterized as x/σ for both data and Gaussian overlay.
     """
     if len(cases) == 0:
         raise ValueError("No cases provided for plotting.")
@@ -623,6 +629,11 @@ def plot_lateral_profiles(
     if row_end <= row_start:
         raise ValueError(f"Invalid averaging window for y index {y_idx}")
     x_coords_arr = np.asarray(x_coords)
+    x_range_mask: Optional[np.ndarray] = None
+    if xlim is not None:
+        x_range_mask = (x_coords_arr >= xlim[0]) & (x_coords_arr <= xlim[1])
+        if not np.any(x_range_mask):
+            raise ValueError(f"No x points fall within requested xlim {xlim}.")
 
     profiles: list[tuple[str, np.ndarray]] = []
     for label, c_mean in cases:
@@ -638,34 +649,104 @@ def plot_lateral_profiles(
             raise ValueError(f"No data in averaging window for {label}")
         profiles.append((label, np.nanmean(window, axis=0)))
 
-    style_cycle = cycle(linestyles if linestyles is not None else ["solid", "dashed", "dashdot", "dotted"])
+    num_profiles = len(profiles)
+    style_cycle = cycle(linestyles if linestyles is not None else ["solid"])
+    color_iter = None
+    if line_color is None:
+        cmap = cmr.get_sub_cmap("cmr.ocean", 0.0, 0.8)
+        color_values = [cmap(v) for v in np.linspace(0, 1, num_profiles)] if num_profiles > 1 else [cmap(0.0)]
+        color_iter = iter(color_values)
     plt.figure(figsize=figsize)
     max_y_val = 0.0
+    plot_entries: list[tuple[str, np.ndarray, np.ndarray, Optional[tuple[np.ndarray, np.ndarray, tuple[float, float, float]]]]] = []
     for label, profile in profiles:
         mask = np.isfinite(profile)
-        y_vals = profile[mask]
+        effective_mask = mask if x_range_mask is None else (mask & x_range_mask)
+        if not np.any(effective_mask):
+            raise ValueError(f"No finite data for case '{label}' within the plotting x-range.")
+        y_vals_raw = profile[effective_mask]
+        y_vals: np.ndarray
         if normalize_to_max:
-            if not np.any(mask):
-                raise ValueError(f"No finite values found for case '{label}' to normalize.")
-            case_max = float(np.nanmax(y_vals))
-            if case_max == 0.0:
-                raise ValueError(f"Maximum finite value is zero for case '{label}'; cannot normalize.")
-            y_vals = y_vals / case_max
+            case_min = float(np.nanmin(y_vals_raw))
+            case_max = float(np.nanmax(y_vals_raw))
+            case_range = case_max - case_min
+            if not np.isfinite(case_min) or not np.isfinite(case_max):
+                raise ValueError(f"Non-finite values encountered for case '{label}' during normalization.")
+            if case_range == 0.0:
+                raise ValueError(f"Zero range for case '{label}'; cannot normalize to [0, 1].")
+            y_vals = np.clip((y_vals_raw - case_min) / case_range, 0.0, 1.0)
+        else:
+            y_vals = y_vals_raw
         if y_vals.size:
             max_y_val = max(max_y_val, float(np.nanmax(y_vals)))
+        x_subset = x_coords_arr[effective_mask]
+        fit_result = fit_gaussian_least_squares(x_subset, y_vals, fit_x_range=fit_x_range)
+        if fit_result is not None:
+            _, _, (_, mu_fit, sigma_fit) = fit_result
+            logger.info("Gaussian fit for %s: mu=%.4f, sigma=%.4f", label, mu_fit, sigma_fit)
+        plot_entries.append((label, y_vals, x_subset, fit_result))
+
+    all_fits_succeeded = all(entry[3] is not None for entry in plot_entries)
+    used_normalized_axis = all_fits_succeeded
+
+    avg_gaussians: list[np.ndarray] = []
+    avg_gaussian_x = None
+
+    for label, y_vals, x_subset, fit_result in plot_entries:
+        if used_normalized_axis and fit_result is not None:
+            x_fit, gaussian_curve, (_, mu_fit, sigma_fit) = fit_result
+            x_plot = (x_subset - mu_fit) / sigma_fit
+            x_fit_plot = (x_fit - mu_fit) / sigma_fit
+        else:
+            x_plot = x_subset
+            x_fit_plot = None if fit_result is None else fit_result[0]
+            gaussian_curve = None if fit_result is None else fit_result[1]
+
+        color_to_use = line_color if line_color is not None else next(color_iter)
         plt.plot(
-            x_coords_arr[mask],
+            x_plot,
             y_vals,
             label=label,
-            color=line_color,
+            color=color_to_use,
             linestyle=next(style_cycle),
             linewidth=line_width,
         )
 
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel + (" (normalized per case)" if normalize_to_max else ""))
-    if xlim is not None:
+        if fit_result is not None and used_normalized_axis:
+            # Accumulate normalized Gaussians for averaging on a common grid.
+            x_fit, gaussian_curve, (_, mu_fit, sigma_fit) = fit_result
+            z_fit = (x_fit - mu_fit) / sigma_fit
+            order = np.argsort(z_fit)
+            z_sorted = z_fit[order]
+            g_sorted = gaussian_curve[order]
+            peak = float(np.nanmax(g_sorted))
+            if peak > 0 and np.isfinite(peak):
+                z_common = np.linspace(-3.0, 3.0, 200) if avg_gaussian_x is None else avg_gaussian_x
+                if avg_gaussian_x is None:
+                    avg_gaussian_x = z_common
+                g_interp = np.interp(z_common, z_sorted, g_sorted / peak, left=np.nan, right=np.nan)
+                avg_gaussians.append(np.array(g_interp, dtype=float))
+
+    if used_normalized_axis:
+        plt.xlabel("(x-μ)/σ")
+    else:
+        plt.xlabel(xlabel)
+    plt.ylabel(ylabel + (" (normalized to [0,1] per case)" if normalize_to_max else ""))
+    if used_normalized_axis:
+        plt.xlim(-3.0, 3.0)
+    elif xlim is not None:
         plt.xlim(xlim)
+    if used_normalized_axis and avg_gaussians and avg_gaussian_x is not None:
+        avg_gaussian = np.nanmean(np.vstack(avg_gaussians), axis=0)
+        plt.plot(
+            avg_gaussian_x,
+            avg_gaussian,
+            color="#FF8348",
+            linestyle="--",
+            linewidth=2.0,
+            alpha=1.0,
+            label="avg Gaussian",
+        )
     if ylim is not None:
         plt.ylim(ylim)
     elif set_ylim_to_data_max and max_y_val > 0:

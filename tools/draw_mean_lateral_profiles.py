@@ -7,6 +7,7 @@ Edit the paths/settings below, then run:
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -24,32 +25,29 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import plot_lateral_profiles
 # -------------------------------------------------------------------
 # List of (label, path) pairs for mean field .npz files
 MEAN_CASES: list[tuple[str, Path]] = [
-    # ("baseline", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_baseline.npz")),
-    # ("buoyant", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_buoyant.npz")),
-    # ("fractal", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_fractal.npz")),
-    # ("diffusive", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_diffusive.npz")),
-    # ("smSource", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_smSource.npz")),
-    # ("nearbed", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_nearbed.npz")),
+    ("baseline", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_baseline.npz")),
+    ("buoyant", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_buoyant.npz")),
+    ("fractal", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_fractal.npz")),
+    ("diffusive", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_diffusive.npz")),
+    ("smSource", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_smSource.npz")),
+    ("nearbed", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_nearbed.npz")),
 ]
 # List of (label, path) pairs for single .npy mean concentration arrays
 MEAN_C_ARRAYS: list[tuple[str, Path]] = [
-    # Example:
-    ("buoyant_c_mean", Path("E:/sPIV_PLIF_ProcessedData/PLIF/plif_buoyant_smoothed_mean.npy")),
-    ("fractal_c_mean", Path("E:/sPIV_PLIF_ProcessedData/PLIF/plif_fractal_smoothed_mean.npy"))
 ]
 X_PATH = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
 Y_PATH = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
-TARGET_Y_MM = [280.0, 150.0, 20.0]
-OUT_DIR = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/Profiles/Tests")
+TARGET_Y_MM = [250.0, 150.0, 50.0]
+OUT_DIR = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/Profiles")
 XLABEL = "x (mm)"
 YLABEL = "Mean concentration"
 NORMALIZE_TO_MAX = True
-LINE_COLOR = "#000000"
-LINESTYLES = ["solid", "dashed", "dashdot", "dotted", (0, (3, 1, 1, 1))]
+LINE_COLOR: str | None = None  # Use palette-based colors if None
+LINESTYLES = ["solid"]
 LINE_WIDTH = 1.0
 XLIM = (-100, 100)
 SET_YLIM_TO_DATA_MAX = True
-ROWS_TO_AVERAGE = 40
+ROWS_TO_AVERAGE = 10
 YLIM = (0.0, 1.0)
 
 
@@ -75,6 +73,10 @@ def _load_mean_c_npy(path: Path) -> np.ndarray:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     x_coords = np.load(X_PATH)
     y_coords = np.load(Y_PATH)
 
@@ -108,6 +110,7 @@ def main() -> None:
             set_ylim_to_data_max=SET_YLIM_TO_DATA_MAX,
             rows_to_average=ROWS_TO_AVERAGE,
             ylim=YLIM,
+            fit_x_range=(-50.0, 100.0),
         )
         print(f"Saved lateral profile plot for y={300-target_y} mm to {out_path}")
 
