@@ -579,6 +579,174 @@ def _nearest_index(values: Sequence[float], target: float) -> tuple[int, float]:
     return idx, float(arr[idx])
 
 
+def compute_gaussian_params_at_y(
+    cases: Sequence[tuple[str, np.ndarray]],
+    x_coords: Sequence[float],
+    y_coords: Sequence[float],
+    target_y: float,
+    *,
+    normalize_to_max: bool = False,
+    xlim: Optional[Tuple[float, float]] = None,
+    rows_to_average: int = 2,
+    fit_x_range: Optional[Tuple[float, float]] = None,
+) -> tuple[list[tuple[str, float, float]], float]:
+    """
+    Compute Gaussian fit parameters (mu, sigma) for each case at a given y-location.
+
+    Returns a list of (label, mu, sigma) tuples and the nearest y value actually used.
+    """
+    if len(cases) == 0:
+        raise ValueError("No cases provided for Gaussian parameter extraction.")
+
+    y_idx, y_match = _nearest_index(y_coords, target_y)
+    row_start = max(0, y_idx - rows_to_average)
+    row_end = min(len(y_coords), y_idx + rows_to_average + 1)
+    if row_end <= row_start:
+        raise ValueError(f"Invalid averaging window for y index {y_idx}")
+
+    x_coords_arr = np.asarray(x_coords)
+    x_range_mask: Optional[np.ndarray] = None
+    if xlim is not None:
+        x_range_mask = (x_coords_arr >= xlim[0]) & (x_coords_arr <= xlim[1])
+        if not np.any(x_range_mask):
+            raise ValueError(f"No x points fall within requested xlim {xlim}.")
+
+    results: list[tuple[str, float, float]] = []
+    for label, c_mean in cases:
+        if c_mean.ndim != 2:
+            raise ValueError(f"{label} mean concentration must be 2D (y, x); got shape {c_mean.shape}")
+        if c_mean.shape != (len(y_coords), len(x_coords)):
+            raise ValueError(
+                f"{label} mean concentration shape {c_mean.shape} does not match coordinate grid "
+                f"({len(y_coords)}, {len(x_coords)})."
+            )
+        window = np.array(c_mean[row_start:row_end, :], copy=False)
+        if window.size == 0:
+            raise ValueError(f"No data in averaging window for {label}")
+
+        profile = np.nanmean(window, axis=0)
+        mask = np.isfinite(profile)
+        if x_range_mask is not None:
+            mask &= x_range_mask
+        if not np.any(mask):
+            raise ValueError(f"No finite data for case '{label}' within the requested x-range.")
+        y_vals_raw = profile[mask]
+        if normalize_to_max:
+            case_min = float(np.nanmin(y_vals_raw))
+            case_max = float(np.nanmax(y_vals_raw))
+            case_range = case_max - case_min
+            if not np.isfinite(case_min) or not np.isfinite(case_max):
+                raise ValueError(f"Non-finite values encountered for case '{label}' during normalization.")
+            if case_range == 0.0:
+                raise ValueError(f"Zero range for case '{label}'; cannot normalize to [0, 1].")
+            y_vals = np.clip((y_vals_raw - case_min) / case_range, 0.0, 1.0)
+        else:
+            y_vals = y_vals_raw
+
+        x_subset = x_coords_arr[mask]
+        fit_result = fit_gaussian_least_squares(x_subset, y_vals, fit_x_range=fit_x_range)
+        if fit_result is None:
+            logger.warning("Gaussian fit failed for %s at y=%.3f (nearest %.3f)", label, target_y, y_match)
+            results.append((label, float("nan"), float("nan")))
+            continue
+
+        _, _, (_, mu_fit, sigma_fit) = fit_result
+        logger.info("Gaussian params for %s at y=%.3f: mu=%.4f, sigma=%.4f", label, y_match, mu_fit, sigma_fit)
+        results.append((label, mu_fit, sigma_fit))
+
+    return results, y_match
+
+
+def plot_gaussian_param_scatter(
+    gaussian_results: Sequence[tuple[float, float, Sequence[tuple[str, float, float]]]],
+    *,
+    param: str,
+    out_path: Path,
+    title: Optional[str] = None,
+    xlabel: str = "Case",
+    ylabel: Optional[str] = None,
+    markers: Optional[Sequence[str]] = None,
+    figsize: tuple[float, float] = (7.0, 4.5),
+    dpi: int = 300,
+    marker_size: float = 70.0,
+) -> None:
+    """
+    Scatter plot of Gaussian parameters across cases with marker variations by y-location.
+
+    gaussian_results should be a sequence of (target_y, nearest_y, results) where results is a
+    sequence of (label, mu, sigma) tuples.
+    """
+    if param not in {"mu", "sigma"}:
+        raise ValueError("param must be 'mu' or 'sigma'.")
+    if len(gaussian_results) == 0:
+        raise ValueError("No Gaussian results provided for plotting.")
+
+    case_labels: list[str] = []
+    for _, _, entries in gaussian_results:
+        for label, _, _ in entries:
+            if label not in case_labels:
+                case_labels.append(label)
+    if len(case_labels) == 0:
+        raise ValueError("No case labels found in Gaussian results.")
+
+    num_cases = len(case_labels)
+    cmap = cmr.get_sub_cmap("cmr.neutral", 0.0, 0.8)
+    colors = [cmap(v) for v in np.linspace(0, 1, num_cases)] if num_cases > 1 else [cmap(0.0)]
+    color_map = {label: colors[idx] for idx, label in enumerate(case_labels)}
+    marker_cycle = cycle(markers if markers is not None else ["o", "s", "^", "D", "P", "X", "v", "*"])
+
+    case_index = {label: idx for idx, label in enumerate(case_labels)}
+
+    plt.figure(figsize=figsize)
+    ax = plt.gca()
+
+    y_handles = []
+    for target_y, nearest_y, entries in gaussian_results:
+        marker = next(marker_cycle)
+        y_label = f"y={target_y:g} mm (nearest {nearest_y:g})" if abs(target_y - nearest_y) > 1e-6 else f"y={target_y:g} mm"
+        y_handles.append(
+            plt.Line2D([], [], color="k", marker=marker, linestyle="None", markersize=8, label=y_label)
+        )
+        for label, mu_val, sigma_val in entries:
+            val = mu_val if param == "mu" else sigma_val
+            if not np.isfinite(val):
+                continue
+            ax.scatter(
+                case_index[label],
+                val,
+                color=color_map[label],
+                marker=marker,
+                s=marker_size,
+                edgecolors="k",
+                linewidths=0.5,
+                label=None,
+            )
+
+    ax.set_xticks(list(case_index.values()))
+    ax.set_xticklabels(case_labels, rotation=20)
+    ax.set_xlabel(xlabel)
+    param_label = "mu" if param == "mu" else "sigma"
+    ax.set_ylabel(ylabel if ylabel is not None else f"Gaussian {param_label}")
+    if title:
+        ax.set_title(title)
+    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.6)
+
+    case_handles = [
+        plt.Line2D([], [], color=color_map[label], marker="o", linestyle="None", markersize=8, label=label)
+        for label in case_labels
+    ]
+    legend1 = ax.legend(handles=case_handles, title="Cases", loc="upper left", bbox_to_anchor=(1.02, 1.0))
+    legend2 = ax.legend(handles=y_handles, title="y locations", loc="upper left", bbox_to_anchor=(1.02, 0.45))
+    ax.add_artist(legend1)
+    ax.add_artist(legend2)
+
+    plt.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=dpi, bbox_inches="tight")
+    plt.close()
+    logger.info("Saved Gaussian %s scatter to %s", param, out_path)
+
+
 def plot_lateral_profiles(
     cases: Sequence[tuple[str, np.ndarray]],
     x_coords: Sequence[float],
@@ -596,7 +764,7 @@ def plot_lateral_profiles(
     normalize_to_max: bool = False,
     line_color: Optional[str] = None,
     linestyles: Optional[Sequence[str]] = None,
-    line_width: float = 1.0,
+    line_width: float = 0.5,
     xlim: Optional[Tuple[float, float]] = None,
     set_ylim_to_data_max: bool = False,
     rows_to_average: int = 2,
@@ -653,7 +821,7 @@ def plot_lateral_profiles(
     style_cycle = cycle(linestyles if linestyles is not None else ["solid"])
     color_iter = None
     if line_color is None:
-        cmap = cmr.get_sub_cmap("cmr.ocean", 0.0, 0.8)
+        cmap = cmr.get_sub_cmap("cmr.neutral", 0.0, 0.8)
         color_values = [cmap(v) for v in np.linspace(0, 1, num_profiles)] if num_profiles > 1 else [cmap(0.0)]
         color_iter = iter(color_values)
     plt.figure(figsize=figsize)
@@ -741,10 +909,10 @@ def plot_lateral_profiles(
         plt.plot(
             avg_gaussian_x,
             avg_gaussian,
-            color="#FF8348",
+            color="#D21502",
             linestyle="--",
-            linewidth=2.0,
-            alpha=1.0,
+            linewidth=2.5,
+            alpha=0.9,
             label="avg Gaussian",
         )
     if ylim is not None:

@@ -18,7 +18,11 @@ SRC_ROOT = ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.append(str(SRC_ROOT))
 
-from src.sPIV_PLIF_postprocessing.visualization.viz import plot_lateral_profiles
+from src.sPIV_PLIF_postprocessing.visualization.viz import (
+    compute_gaussian_params_at_y,
+    plot_gaussian_param_scatter,
+    plot_lateral_profiles,
+)
 
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
@@ -49,6 +53,8 @@ XLIM = (-100, 100)
 SET_YLIM_TO_DATA_MAX = True
 ROWS_TO_AVERAGE = 10
 YLIM = (0.0, 1.0)
+FIT_X_RANGE = (-50.0, 100.0)
+GAUSSIAN_MARKERS = ["o", "s", "^", "D", "P", "X"]
 
 
 def _load_mean_c(path: Path) -> np.ndarray:
@@ -90,9 +96,10 @@ def main() -> None:
     if not cases_loaded:
         raise ValueError("No mean cases provided. Populate MEAN_CASES and/or MEAN_C_ARRAYS.")
 
+    gaussian_results: list[tuple[float, float, list[tuple[str, float, float]]]] = []
     for target_y in TARGET_Y_MM:
         out_path = OUT_DIR / f"lateral_profile_y{300-target_y:g}mm.png"
-        title = f"Mean concentration lateral profile at y ≈ {300-target_y:g} mm"
+        title = f"Mean concentration lateral profile at y ƒ%^ {300-target_y:g} mm"
         plot_lateral_profiles(
             cases_loaded,
             x_coords=x_coords,
@@ -110,9 +117,43 @@ def main() -> None:
             set_ylim_to_data_max=SET_YLIM_TO_DATA_MAX,
             rows_to_average=ROWS_TO_AVERAGE,
             ylim=YLIM,
-            fit_x_range=(-50.0, 100.0),
+            fit_x_range=FIT_X_RANGE,
+            legend=False,
+            grid=False,
         )
         print(f"Saved lateral profile plot for y={300-target_y} mm to {out_path}")
+        params_at_y, y_match = compute_gaussian_params_at_y(
+            cases_loaded,
+            x_coords=x_coords,
+            y_coords=y_coords,
+            target_y=target_y,
+            normalize_to_max=NORMALIZE_TO_MAX,
+            xlim=XLIM,
+            rows_to_average=ROWS_TO_AVERAGE,
+            fit_x_range=FIT_X_RANGE,
+        )
+        gaussian_results.append((target_y, y_match, params_at_y))
+
+    mu_out = OUT_DIR / "gaussian_mu_across_cases.png"
+    sigma_out = OUT_DIR / "gaussian_sigma_across_cases.png"
+    plot_gaussian_param_scatter(
+        gaussian_results,
+        param="mu",
+        out_path=mu_out,
+        title="Gaussian mu across cases",
+        ylabel="mu (mm)",
+        markers=GAUSSIAN_MARKERS,
+    )
+    plot_gaussian_param_scatter(
+        gaussian_results,
+        param="sigma",
+        out_path=sigma_out,
+        title="Gaussian sigma across cases",
+        ylabel="sigma (mm)",
+        markers=GAUSSIAN_MARKERS,
+    )
+    print(f"Saved Gaussian mu scatter to {mu_out}")
+    print(f"Saved Gaussian sigma scatter to {sigma_out}")
 
 
 if __name__ == "__main__":
