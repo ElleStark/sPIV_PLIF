@@ -663,15 +663,15 @@ def plot_gaussian_param_scatter(
     param: str,
     out_path: Path,
     title: Optional[str] = None,
-    xlabel: str = "Case",
+    xlabel: str = "y (mm)",
     ylabel: Optional[str] = None,
     markers: Optional[Sequence[str]] = None,
     figsize: tuple[float, float] = (7.0, 4.5),
-    dpi: int = 300,
+    dpi: int = 600,
     marker_size: float = 70.0,
 ) -> None:
     """
-    Scatter plot of Gaussian parameters across cases with marker variations by y-location.
+    Scatter plot of Gaussian parameters versus y-location with marker variations by case.
 
     gaussian_results should be a sequence of (target_y, nearest_y, results) where results is a
     sequence of (label, mu, sigma) tuples.
@@ -690,55 +690,68 @@ def plot_gaussian_param_scatter(
         raise ValueError("No case labels found in Gaussian results.")
 
     num_cases = len(case_labels)
-    cmap = cmr.get_sub_cmap("cmr.neutral", 0.0, 0.8)
+    cmap = cmr.get_sub_cmap("cmr.rainforest", 0.0, 0.85)
     colors = [cmap(v) for v in np.linspace(0, 1, num_cases)] if num_cases > 1 else [cmap(0.0)]
     color_map = {label: colors[idx] for idx, label in enumerate(case_labels)}
     marker_cycle = cycle(markers if markers is not None else ["o", "s", "^", "D", "P", "X", "v", "*"])
+    marker_map = {label: next(marker_cycle) for label in case_labels}
 
-    case_index = {label: idx for idx, label in enumerate(case_labels)}
+    case_points: dict[str, list[tuple[float, float]]] = {label: [] for label in case_labels}
 
     plt.figure(figsize=figsize)
     ax = plt.gca()
 
-    y_handles = []
     for target_y, nearest_y, entries in gaussian_results:
-        marker = next(marker_cycle)
-        y_label = f"y={target_y:g} mm (nearest {nearest_y:g})" if abs(target_y - nearest_y) > 1e-6 else f"y={target_y:g} mm"
-        y_handles.append(
-            plt.Line2D([], [], color="k", marker=marker, linestyle="None", markersize=8, label=y_label)
-        )
+        y_plot = nearest_y if np.isfinite(nearest_y) else target_y
+        y_plot = 300 - y_plot  # Convert to mm from top
         for label, mu_val, sigma_val in entries:
             val = mu_val if param == "mu" else sigma_val
             if not np.isfinite(val):
                 continue
+            case_points[label].append((y_plot, val))
             ax.scatter(
-                case_index[label],
+                y_plot,
                 val,
                 color=color_map[label],
-                marker=marker,
+                marker=marker_map[label],
                 s=marker_size,
                 edgecolors="k",
                 linewidths=0.5,
+                alpha=0.85,
+                zorder=3,
                 label=None,
             )
 
-    ax.set_xticks(list(case_index.values()))
-    ax.set_xticklabels(case_labels, rotation=20)
+    # Connect points for each case to highlight trends along y.
+    for label, points in case_points.items():
+        if len(points) < 2:
+            continue
+        points_sorted = sorted(points, key=lambda p: p[0])
+        y_vals, param_vals = zip(*points_sorted)
+        ax.plot(
+            y_vals,
+            param_vals,
+            color=color_map[label],
+            linestyle="-",
+            linewidth=1.0,
+            alpha=0.5,
+            zorder=2,
+        )
+
     ax.set_xlabel(xlabel)
     param_label = "mu" if param == "mu" else "sigma"
     ax.set_ylabel(ylabel if ylabel is not None else f"Gaussian {param_label}")
+    if param == "mu":
+        ax.set_ylim(-10.0, 10.0)
     if title:
         ax.set_title(title)
     ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.6)
 
     case_handles = [
-        plt.Line2D([], [], color=color_map[label], marker="o", linestyle="None", markersize=8, label=label)
+        plt.Line2D([], [], color=color_map[label], marker=marker_map[label], linestyle="None", markersize=8, label=label)
         for label in case_labels
     ]
-    legend1 = ax.legend(handles=case_handles, title="Cases", loc="upper left", bbox_to_anchor=(1.02, 1.0))
-    legend2 = ax.legend(handles=y_handles, title="y locations", loc="upper left", bbox_to_anchor=(1.02, 0.45))
-    ax.add_artist(legend1)
-    ax.add_artist(legend2)
+    ax.legend(handles=case_handles, title="Cases", loc="upper left", bbox_to_anchor=(1.02, 1.0))
 
     plt.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -758,18 +771,21 @@ def plot_lateral_profiles(
     xlabel: str = "x",
     ylabel: str = "Mean concentration",
     figsize: tuple[float, float] = (5.0, 5.0),
-    dpi: int = 300,
+    dpi: int = 600,
     legend: bool = True,
     grid: bool = True,
     normalize_to_max: bool = False,
     line_color: Optional[str] = None,
+    line_colors: Optional[Sequence[Any]] = None,
     linestyles: Optional[Sequence[str]] = None,
     line_width: float = 0.5,
+    line_alpha: float = 0.5,
     xlim: Optional[Tuple[float, float]] = None,
     set_ylim_to_data_max: bool = False,
     rows_to_average: int = 2,
     ylim: Optional[Tuple[float, float]] = None,
     fit_x_range: Optional[Tuple[float, float]] = None,
+    perform_gaussian_fit: bool = True,
 ) -> None:
     """
     Plot lateral (x-direction) mean concentration profiles for multiple cases at a given y.
@@ -787,6 +803,8 @@ def plot_lateral_profiles(
     fit_x_range
         Optional (xmin, xmax) bounds in which to perform Gaussian fitting; defaults to plotted range.
         When a fit succeeds, x is re-parameterized as x/σ for both data and Gaussian overlay.
+    line_alpha
+        Alpha transparency for plotted lines.
     """
     if len(cases) == 0:
         raise ValueError("No cases provided for plotting.")
@@ -821,9 +839,12 @@ def plot_lateral_profiles(
     style_cycle = cycle(linestyles if linestyles is not None else ["solid"])
     color_iter = None
     if line_color is None:
-        cmap = cmr.get_sub_cmap("cmr.neutral", 0.0, 0.8)
-        color_values = [cmap(v) for v in np.linspace(0, 1, num_profiles)] if num_profiles > 1 else [cmap(0.0)]
-        color_iter = iter(color_values)
+        if line_colors is not None:
+            color_iter = cycle(line_colors)
+        else:
+            cmap = cmr.get_sub_cmap("cmr.rainforest", 0.0, 0.85)
+            color_values = [cmap(v) for v in np.linspace(0, 1, num_profiles)] if num_profiles > 1 else [cmap(0.0)]
+            color_iter = iter(color_values)
     plt.figure(figsize=figsize)
     max_y_val = 0.0
     plot_entries: list[tuple[str, np.ndarray, np.ndarray, Optional[tuple[np.ndarray, np.ndarray, tuple[float, float, float]]]]] = []
@@ -848,13 +869,16 @@ def plot_lateral_profiles(
         if y_vals.size:
             max_y_val = max(max_y_val, float(np.nanmax(y_vals)))
         x_subset = x_coords_arr[effective_mask]
-        fit_result = fit_gaussian_least_squares(x_subset, y_vals, fit_x_range=fit_x_range)
-        if fit_result is not None:
-            _, _, (_, mu_fit, sigma_fit) = fit_result
-            logger.info("Gaussian fit for %s: mu=%.4f, sigma=%.4f", label, mu_fit, sigma_fit)
+        if perform_gaussian_fit:
+            fit_result = fit_gaussian_least_squares(x_subset, y_vals, fit_x_range=fit_x_range)
+            if fit_result is not None:
+                _, _, (_, mu_fit, sigma_fit) = fit_result
+                logger.info("Gaussian fit for %s: mu=%.4f, sigma=%.4f", label, mu_fit, sigma_fit)
+        else:
+            fit_result = None
         plot_entries.append((label, y_vals, x_subset, fit_result))
 
-    all_fits_succeeded = all(entry[3] is not None for entry in plot_entries)
+    all_fits_succeeded = perform_gaussian_fit and all(entry[3] is not None for entry in plot_entries)
     used_normalized_axis = all_fits_succeeded
 
     avg_gaussians: list[np.ndarray] = []
@@ -878,6 +902,7 @@ def plot_lateral_profiles(
             color=color_to_use,
             linestyle=next(style_cycle),
             linewidth=line_width,
+            alpha=line_alpha,
         )
 
         if fit_result is not None and used_normalized_axis:
@@ -912,7 +937,7 @@ def plot_lateral_profiles(
             color="#D21502",
             linestyle="--",
             linewidth=2.5,
-            alpha=0.9,
+            alpha=line_alpha,
             label="avg Gaussian",
         )
     if ylim is not None:

@@ -29,12 +29,12 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import (
 # -------------------------------------------------------------------
 # List of (label, path) pairs for mean field .npz files
 MEAN_CASES: list[tuple[str, Path]] = [
-    ("baseline", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_baseline.npz")),
-    ("buoyant", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_buoyant.npz")),
-    ("fractal", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_fractal.npz")),
-    ("diffusive", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_diffusive.npz")),
     ("smSource", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_smSource.npz")),
     ("nearbed", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_nearbed.npz")),
+    ("fractal", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_fractal.npz")),
+    ("baseline", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_baseline.npz")),
+    ("buoyant", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_buoyant.npz")),
+    ("diffusive", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_diffusive.npz")),
 ]
 # List of (label, path) pairs for single .npy mean concentration arrays
 MEAN_C_ARRAYS: list[tuple[str, Path]] = [
@@ -99,7 +99,7 @@ def main() -> None:
     gaussian_results: list[tuple[float, float, list[tuple[str, float, float]]]] = []
     for target_y in TARGET_Y_MM:
         out_path = OUT_DIR / f"lateral_profile_y{300-target_y:g}mm.png"
-        title = f"Mean concentration lateral profile at y ƒ%^ {300-target_y:g} mm"
+        title = f"Mean concentration lateral profile at y = {300 - target_y:g} mm"
         plot_lateral_profiles(
             cases_loaded,
             x_coords=x_coords,
@@ -113,12 +113,13 @@ def main() -> None:
             line_color=LINE_COLOR,
             linestyles=LINESTYLES,
             line_width=LINE_WIDTH,
+            line_alpha=0.85,
             xlim=XLIM,
             set_ylim_to_data_max=SET_YLIM_TO_DATA_MAX,
             rows_to_average=ROWS_TO_AVERAGE,
             ylim=YLIM,
             fit_x_range=FIT_X_RANGE,
-            legend=False,
+            legend=True,
             grid=False,
         )
         print(f"Saved lateral profile plot for y={300-target_y} mm to {out_path}")
