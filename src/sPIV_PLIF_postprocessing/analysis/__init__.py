@@ -2,4 +2,9 @@
 Analysis utilities for processing PIV/PLIF measurement data.
 """
 
-__all__ = []
+from .intermittency import compute_intermittency, compute_intermittency_from_file
+
+__all__ = [
+    "compute_intermittency",
+    "compute_intermittency_from_file",
+]
