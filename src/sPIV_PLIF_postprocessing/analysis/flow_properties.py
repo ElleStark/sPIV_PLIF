@@ -29,20 +29,30 @@ np.save('E:/sPIV_PLIF_ProcessedData/flow_properties/flx_u_v_w/w_flx.npy', w_flx)
 # Compute fluctuating strain rates 
 dx = 0.0005  # m
 dt = 0.02  # sec
-duflx_dy = np.gradient(u_flx, dt, dx, dx)
-duflx_dy = np.asarray(duflx_dy)
-duflx_dy = duflx_dy[1, :, :, :]
-np.save(f'E:/sPIV_PLIF_ProcessedData/flow_properties/flx_StrainRates/duflx_dy_{case_name}.npy', duflx_dy)
-dvflx_dx = np.gradient(v_flx, dt, dx, dx)
-dvflx_dx = np.asarray(dvflx_dx)
-dvflx_dx = dvflx_dx[2, :, :, :]
-np.save(f'E:/sPIV_PLIF_ProcessedData/flow_properties/flx_StrainRates/dvflx_dx_{case_name}.npy', dvflx_dx)
+duflx = np.gradient(u_flx, dx, dx, dt)
+duflx = np.asarray(duflx)
+duflx_dx = duflx[0, :, :, :]
+duflx_dy = duflx[1, :, :, :]
+duflx_dw = duflx[2, :, :, :]
+np.save(f'E:/sPIV_PLIF_ProcessedData/flow_properties/flx_StrainRates/duflx_{case_name}.npy', duflx)
+dvflx = np.gradient(v_flx, dx, dx, dt)
+dvflx_dx = np.asarray(dvflx[0, :, :, :])
+dvflx_dy = np.asarray(dvflx[1, :, :, :])
+dvflx_dw = np.asarray(dvflx[2, :, :, :])
+np.save(f'E:/sPIV_PLIF_ProcessedData/flow_properties/flx_StrainRates/dvflx_{case_name}.npy', dvflx)
+dwflx = np.gradient(w_flx, dx, dx, dt)
+dwflx_dw = np.asarray(dwflx[2, :, :, :])
+np.save(f'E:/sPIV_PLIF_ProcessedData/flow_properties/flx_StrainRates/dwflx_{case_name}.npy', dwflx)
+
+
+
+
 # duflx_dy = np.load('ignore/duflx_dyv2.npy')
 # dvflx_dx = np.load('ignore/dvflx_dxv2.npy')
 
 nu = 1.5 * 10**(-5) # kinematic viscosity 
 # Compute viscous energy dissipation rate
-epsilon = np.mean((duflx_dy**2 + dvflx_dx**2), axis=0)
+epsilon = 2 * nu * np.mean((duflx_dx**2 + dvflx_dy**2 + dwflx_dw**2 + 2 * duflx_dy**2 + 2 *dvflx_dx**2 + 2 * dvflx_dw**2), axis=2)
 print(f'avg viscous dissipation: {np.mean(epsilon)}')
 print(f'avg viscous dissipation, x=[0, 0.05] and y=[-0.2, 0.2]: {np.mean(epsilon[200:1000, 0:100])}')
 print(f'avg viscous dissipation, x=[0.7, 0.75] and y=[-0.2, 0.2]: {np.mean(epsilon[200:1000, 1400:1500])}')
@@ -51,20 +61,16 @@ plt.pcolormesh(epsilon)
 plt.colorbar()
 plt.show()
 
-Taylor_microscale = np.sqrt(15 / epsilon) * np.sqrt(0.5 * (np.mean(u_flx**2, axis=0) + np.mean(v_flx**2, axis=0)))
-# Taylor_microscale = np.sqrt(10 / epsilon) * np.sqrt((np.mean(u_flx**2, axis=0)))
-
-
-
-
-
-uprime = np.sqrt(0.5*(np.mean(u_flx**2, axis=0) + np.mean(v_flx**2, axis=0)))  # root mean square velocity
-# K_tscale = 1 / np.sqrt(np.mean(np.sqrt((duflx_dy**2 + dvflx_dx**2))**2, axis=0))
-# Taylor_microscale = np.sqrt(15)*uprime*K_tscale
-Taylor_Re = uprime * Taylor_microscale / nu
-np.save('ignore/extended_sim/Taylor_microscale_v1.npy', Taylor_microscale)
-np.save('ignore/extended_sim/Taylor_Re_v1.npy', Taylor_Re)
-
+# Compute Taylor microscale and Taylor Reynolds number
+avg_rms = np.sqrt((1/3)*(np.mean(u_flx**2, axis=2) + np.mean(v_flx**2, axis=2) + np.mean(w_flx**2, axis=2)))
+Taylor_microscale = np.sqrt(15 * nu / epsilon) * avg_rms  # homogeneous isotropic turbulence assumption
+kolmogorov_length_scale = (nu**3 / epsilon)**0.25
+kolmogorov_time_scale = (nu / epsilon)**0.5
+Taylor_Re = avg_rms * Taylor_microscale / nu
+np.save(f'E:/sPIV_PLIF_ProcessedData/flow_properties/Taylor_microscale_{case_name}.npy', Taylor_microscale)
+np.save(f'E:/sPIV_PLIF_ProcessedData/flow_properties/Taylor_Re_{case_name}.npy', Taylor_Re)
+np.save(f'E:/sPIV_PLIF_ProcessedData/flow_properties/kolmogorov_length_scale_{case_name}.npy', kolmogorov_length_scale)
+np.save(f'E:/sPIV_PLIF_ProcessedData/flow_properties/kolmogorov_time_scale_{case_name}.npy', kolmogorov_time_scale)
 # PLOT: Taylor microscale, computed per Carbone & Wilczek, 2024 (https://doi.org/10.1017/jfm.2024.165)
 print(f'avg Taylor microscale: {np.mean(Taylor_microscale)}')
 print(f'avg Taylor microscale from x=[0, 0.05] and y=[-0.15, 0.15]: {np.mean(Taylor_microscale[123:723, 0:100])}')
@@ -72,7 +78,7 @@ print(f'avg Taylor microscale from x=[0, 0.05] and y=[-0.15, 0.15]: {np.mean(Tay
 plt.close()
 plt.pcolormesh(Taylor_microscale)
 plt.colorbar()
-plt.savefig('ignore/extended_sim/Taylor_microscale_v1.png', dpi=600)
+plt.savefig(f'E:/sPIV_PLIF_ProcessedData/flow_properties/Taylor_microscale_{case_name}.png', dpi=600)
 plt.show()
 
 # PLOT: Taylor Reynolds number using methods from Carbone & Wilczek, 2024 (https://doi.org/10.1017/jfm.2024.165)
@@ -82,22 +88,19 @@ print(f'avg Taylor Re from x=[0, 0.05] and y=[-0.15, 0.15]: {np.mean(Taylor_Re[1
 plt.close()
 plt.pcolormesh(Taylor_Re)
 plt.colorbar()
-plt.savefig('ignore/extended_sim/Taylor_Re_v1.png', dpi=600)
+plt.savefig(f'E:/sPIV_PLIF_ProcessedData/flow_properties/Taylor_Re_{case_name}.png', dpi=600)
 plt.show()
 
-
-
-
-
-
-
-
 # Compute turbulent kinetic energy
-tke = 0.5 * (np.mean(u_flx**2, axis=0) + np.mean(v_flx**2, axis=0))
-np.save('ignore/extended_sim/tke_extendedsim.npy', tke)
-# t_intensity = np.sqrt(tke) / np.sqrt(u_mean**2 + v_mean**2)
+tke = 0.5 * (np.mean(u_flx**2, axis=2) + np.mean(v_flx**2, axis=2) + np.mean(w_flx**2, axis=2))
+np.save(f'E:/sPIV_PLIF_ProcessedData/flow_properties/tke_{case_name}.npy', tke)
+u_rms = np.load(f'E:/sPIV_PLIF_ProcessedData/rms_fields/{case_name}_u_rms.npy')
+v_rms = np.load(f'E:/sPIV_PLIF_ProcessedData/rms_fields/{case_name}_v_rms.npy')
+w_rms = np.load(f'E:/sPIV_PLIF_ProcessedData/rms_fields/{case_name}_w_rms.npy')
+t_intensity_avg = np.sqrt((1/3) * (u_rms + v_rms + w_rms)) / u_mean
+np.save(f'E:/sPIV_PLIF_ProcessedData/flow_properties/turbulence_intensity_{case_name}.npy', t_intensity_avg)
 
 # PLOT: turbulent intensity and turbulent kinetic energy
 cmap = cmr.ember
-utils.plot_field_xy(x_grid, y_grid, tke, title='turbulent kinetic energy', cmap=cmap, filepath='ignore/extended_sim/tke_fullDomain.png', dpi=600, trimmed=False)
-# utils.plot_field_xy(x_grid, y_grid, t_intensity, title='turbulence intensity', cmap=cmap, range=[0, 0.8], filepath='ignore/t_intensity_trimmed.png', dpi=600, trimmed=True)
+utils.plot_field_xy(x_grid, y_grid, tke, title='turbulent kinetic energy', cmap=cmap, filepath=f'E:/sPIV_PLIF_ProcessedData/flow_properties/tke_{case_name}.png', dpi=600, trimmed=False)
+utils.plot_field_xy(x_grid, y_grid, t_intensity_avg, title='turbulence intensity', cmap=cmap, range=[0, 0.8], filepath=f'E:/sPIV_PLIF_ProcessedData/flow_properties/t_intensity_{case_name}.png', dpi=600, trimmed=True)
