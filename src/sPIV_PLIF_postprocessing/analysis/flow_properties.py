@@ -11,13 +11,6 @@ from typing import Iterable, Tuple
 import numpy as np
 
 # Default slices and paths replicate the original script behavior.
-# DEFAULT_BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
-# DEFAULT_X_SLICE = slice(200, 300)
-# DEFAULT_Y_SLICE = slice(200, 300)
-# DEFAULT_T_SLICE = slice(0, 100)
-# DEFAULT_DX = 0.0005  # m
-# DEFAULT_DT = 0.05  # sec
-# DEFAULT_NU = 1.5e-5  # kinematic viscosity
 DEFAULT_BASE_PATH = None
 DEFAULT_X_SLICE = None
 DEFAULT_Y_SLICE = None
@@ -147,13 +140,13 @@ def compute_turbulent_kinetic_energy(
 
 
 def compute_turbulence_intensity(
-    u_rms: np.ndarray,
-    v_rms: np.ndarray,
-    w_rms: np.ndarray,
-    u_mean: np.ndarray,
+    u_flx: np.ndarray,
+    v_flx: np.ndarray,
+    w_flx: np.ndarray,
+    u_mean: float = 0.30,
 ) -> np.ndarray:
     """Compute turbulence intensity using RMS components and mean streamwise velocity."""
-    t_intensity_avg = np.sqrt((1 / 3) * (u_rms + v_rms + w_rms)) / u_mean
+    t_intensity_avg = np.sqrt((1 / 3) * (np.mean(u_flx**2, axis=2) + np.mean(v_flx**2, axis=2) + np.mean(w_flx**2, axis=2))) / u_mean
     return t_intensity_avg
 
 
