@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = ROOT / "src"
@@ -33,12 +34,27 @@ from src.sPIV_PLIF_postprocessing.analysis import (
 # Edit these settings for your dataset
 CASE_NAME = "baseline" 
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
-X_SLICE = slice(100, 200)
-Y_SLICE = slice(0, 500)
+X_SLICE = slice(0, 600)
+Y_SLICE = slice(100, 500)
 T_SLICE = slice(0, 200)
 DX = 0.0005  # m
 DT = 0.05  # sec
 NU = 1.5e-5  # kinematic viscosity, m2/s
+
+
+def _plot_field(arr: np.ndarray, title: str, out_path: Path, *, vmin=None, vmax=None, cmap: str = "viridis") -> None:
+    """Save a simple pcolormesh plot for a 2D field."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.figure(figsize=(6, 5))
+    plt.pcolormesh(arr, cmap=cmap, shading="auto", vmin=vmin, vmax=vmax)
+    plt.colorbar(label=title)
+    plt.xlabel("y index")
+    plt.ylabel("x index")
+    plt.gca().set_aspect("equal", adjustable="box")
+    plt.title(title)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=300)
+    plt.close()
 
 
 def main() -> None:
@@ -49,9 +65,11 @@ def main() -> None:
     u_mean = u_mean_full[X_SLICE, Y_SLICE]
     v_mean = v_mean_full[X_SLICE, Y_SLICE]
     w_mean = w_mean_full[X_SLICE, Y_SLICE]
+    _plot_field(v_mean, "mean V", (BASE_PATH / "flow_properties" / f"Vmean_QC_{CASE_NAME}.png"))
 
     # Fluctuating components
     u_flx, v_flx, w_flx = compute_fluctuating_components(u, v, w, u_mean, v_mean, w_mean)
+    _plot_field(v_flx[:, :, 20], "flx V", (BASE_PATH / "flow_properties" / f"Vflx_QC_{CASE_NAME}.png"))
     flx_dir = BASE_PATH / "flow_properties" / "flx_u_v_w"
     save_arrays(
         [
@@ -80,6 +98,7 @@ def main() -> None:
     epsilon = compute_viscous_dissipation(duflx_dx, dvflx_dy, dwflx_dz, nu=NU)
     eps_path = BASE_PATH / "flow_properties" / f"epsilon_{CASE_NAME}.npy"
     save_arrays([(eps_path, epsilon)])
+    _plot_field(epsilon, "epsilon", eps_path.with_suffix(".png"))
     print(f"Saved viscous dissipation to {eps_path}")
     print(f"Average epsilon: {float(np.mean(epsilon))}")
 
@@ -95,6 +114,10 @@ def main() -> None:
             (BASE_PATH / "flow_properties" / f"kolmogorov_time_scale_{CASE_NAME}.npy", kolmogorov_time_scale),
         ]
     )
+    _plot_field(Taylor_microscale, "Taylor microscale", (BASE_PATH / "flow_properties" / f"Taylor_microscale_{CASE_NAME}.png"), vmin=0, vmax=np.percentile(Taylor_microscale, 99))
+    _plot_field(Taylor_Re, "Taylor Re", (BASE_PATH / "flow_properties" / f"Taylor_Re_{CASE_NAME}.png"), vmin=0, vmax=np.percentile(Taylor_Re, 99))
+    _plot_field(kolmogorov_length_scale, "Kolmogorov length scale", (BASE_PATH / "flow_properties" / f"kolmogorov_length_scale_{CASE_NAME}.png"), vmin=0, vmax=np.percentile(kolmogorov_length_scale, 99))
+    _plot_field(kolmogorov_time_scale, "Kolmogorov time scale", (BASE_PATH / "flow_properties" / f"kolmogorov_time_scale_{CASE_NAME}.png"), vmin=0, vmax=np.percentile(kolmogorov_time_scale, 99))
     print(f"Average Taylor microscale: {float(np.mean(Taylor_microscale))}")
     print(f"Average Taylor Re: {float(np.mean(Taylor_Re))}")
     print(f"Average Kolmogorov length scale: {float(np.mean(kolmogorov_length_scale))}")
@@ -103,6 +126,7 @@ def main() -> None:
     tke, u_mnsq, v_mnsq, w_mnsq = compute_turbulent_kinetic_energy(u_flx, v_flx, w_flx)
     tke_path = BASE_PATH / "flow_properties" / f"tke_{CASE_NAME}.npy"
     save_arrays([(tke_path, tke)])
+    _plot_field(tke, "TKE", tke_path.with_suffix(".png"), vmin=0, vmax=np.percentile(tke, 99))
     print(f"Saved TKE to {tke_path}")
     print(f"anisotropy ratios: <u'^2>/TKE={np.mean(u_mnsq/tke)}: <v'^2>/TKE={np.mean(v_mnsq/tke)}, <w'^2>/TKE={np.mean(w_mnsq/tke)})")
 
@@ -117,6 +141,7 @@ def main() -> None:
     t_intensity_avg = compute_turbulence_intensity(u_rms, v_rms, w_rms, u_mean)
     t_intensity_path = BASE_PATH / "flow_properties" / f"turbulence_intensity_{CASE_NAME}.npy"
     save_arrays([(t_intensity_path, t_intensity_avg)])
+    _plot_field(t_intensity_avg, "Turbulence intensity", t_intensity_path.with_suffix(".png"), vmin=0, vmax=np.percentile(t_intensity_avg, 90))
     print(f"Saved turbulence intensity to {t_intensity_path}")
 
 
