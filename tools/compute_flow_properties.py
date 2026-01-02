@@ -34,7 +34,7 @@ from src.sPIV_PLIF_postprocessing.analysis import (
 CASE_NAME = "baseline" 
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 X_SLICE = slice(100, 200)
-Y_SLICE = slice(0, 100)
+Y_SLICE = slice(0, 500)
 T_SLICE = slice(0, 200)
 DX = 0.0005  # m
 DT = 0.05  # sec
