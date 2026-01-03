@@ -14,6 +14,11 @@ from .flow_properties import (
     load_velocity_components,
     save_arrays,
 )
+from .concentration_pdf import (
+    concentration_timeseries_from_file,
+    compute_concentration_pdf,
+    plot_concentration_pdf,
+)
 
 __all__ = [
     "compute_intermittency",
@@ -26,5 +31,8 @@ __all__ = [
     "compute_taylor_scales",
     "compute_turbulent_kinetic_energy",
     "compute_turbulence_intensity",
+    "concentration_timeseries_from_file",
+    "compute_concentration_pdf",
+    "plot_concentration_pdf",
     "save_arrays",
 ]
