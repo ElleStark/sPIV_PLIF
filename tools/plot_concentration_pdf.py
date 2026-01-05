@@ -24,13 +24,22 @@ from src.sPIV_PLIF_postprocessing.analysis import (
     compute_concentration_pdf,
     plot_concentration_pdf,
 )
+from src.sPIV_PLIF_postprocessing.visualization.viz import compute_gaussian_params_at_y
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "diffusive"
+CASE_NAME = "fractal"
 CONCENTRATION_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/plif_{CASE_NAME}_smoothed.npy")
-Y_IDX = 0  # row index in the concentration array
-X_IDX = 340  # column index in the concentration array
+Y_IDX = 400  # row index in the concentration array
+X_IDX = 360  # column index in the concentration array
+AUTO_X_FROM_GAUSS = False  # set True to override X_IDX using Gaussian fit (centerline ± sigma)
+MEAN_FIELD_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_{CASE_NAME}.npz")
+X_COORDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
+Y_COORDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
+GAUSS_TARGET_Y_MM = Y_IDX  # target y (mm) for Gaussian fit
+GAUSS_ROWS_TO_AVERAGE = 10
+GAUSS_FIT_X_RANGE = (-50.0, 100.0)
+GAUSS_USE_CENTER_PLUS_SIGMA = True  # if True pick mu + sigma; if False pick mu - sigma; set both False to use mu
 T_SLICE = slice(0, 6000)  # time frames to include; set to None for all
 BIN_WIDTH = 0.0065  # concentration bin width
 PDF_RANGE: tuple[float, float] | None = None  # e.g., (0.0, 0.1) or None to auto; if None, range comes from data
@@ -46,7 +55,41 @@ def main() -> None:
     if not CONCENTRATION_PATH.exists():
         raise FileNotFoundError(f"Concentration stack not found: {CONCENTRATION_PATH}")
 
-    ts = concentration_timeseries_from_file(CONCENTRATION_PATH, y_idx=Y_IDX, x_idx=X_IDX, t_slice=T_SLICE, mmap_mode="r")
+    x_idx = X_IDX
+    if AUTO_X_FROM_GAUSS:
+        if not MEAN_FIELD_PATH.exists():
+            raise FileNotFoundError(f"Mean fields file not found for Gaussian fit: {MEAN_FIELD_PATH}")
+        if not X_COORDS_PATH.exists() or not Y_COORDS_PATH.exists():
+            raise FileNotFoundError("x/y coordinate files not found for Gaussian fit.")
+        x_coords = np.load(X_COORDS_PATH)
+        y_coords = np.load(Y_COORDS_PATH)
+        mean_data = np.load(MEAN_FIELD_PATH)
+        if "c" not in mean_data:
+            raise KeyError(f"Mean fields file missing 'c': {MEAN_FIELD_PATH}")
+        c_mean = np.array(mean_data["c"], copy=False)
+        params_at_y, _ = compute_gaussian_params_at_y(
+            [("case", c_mean)],
+            x_coords=x_coords,
+            y_coords=y_coords,
+            target_y=GAUSS_TARGET_Y_MM,
+            normalize_to_max=True,
+            xlim=None,
+            rows_to_average=GAUSS_ROWS_TO_AVERAGE,
+            fit_x_range=GAUSS_FIT_X_RANGE,
+        )
+        _, mu_mm, sigma_mm = params_at_y[0]
+        if not np.isfinite(mu_mm) or not np.isfinite(sigma_mm):
+            raise ValueError("Gaussian fit failed; got non-finite mu/sigma.")
+        target_x_mm = mu_mm
+        if GAUSS_USE_CENTER_PLUS_SIGMA:
+            target_x_mm = mu_mm + sigma_mm
+        elif GAUSS_USE_CENTER_PLUS_SIGMA is False:
+            # If explicitly False, choose mu - sigma instead of centerline
+            target_x_mm = mu_mm - sigma_mm
+        x_idx = int(np.argmin(np.abs(x_coords - target_x_mm)))
+        print(f"Gaussian fit: mu={mu_mm:.3f} mm, sigma={sigma_mm:.3f} mm, using x_idx={x_idx} (x={x_coords[x_idx]:.3f} mm)")
+
+    ts = concentration_timeseries_from_file(CONCENTRATION_PATH, y_idx=Y_IDX, x_idx=x_idx, t_slice=T_SLICE, mmap_mode="r")
     finite = ts[np.isfinite(ts)]
     mean_c = float(np.mean(finite))
     std_c = float(np.std(finite))
@@ -64,14 +107,14 @@ def main() -> None:
     centers, pdf, edges = compute_concentration_pdf(ts, bins=edges, value_range=None)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    pdf_path = OUT_DIR / f"concentration_pdf_{CASE_NAME}_y{(600-Y_IDX)/20}_x{(X_IDX-300)/20}.npz"
+    pdf_path = OUT_DIR / f"concentration_pdf_{CASE_NAME}_y{(600-Y_IDX)/20}_x{(x_idx-300)/20}.npz"
     np.savez(
         pdf_path,
         bin_centers=centers,
         pdf=pdf,
         bin_edges=edges,
         y_idx=Y_IDX,
-        x_idx=X_IDX,
+        x_idx=x_idx,
         t_slice=str(T_SLICE),
         mean=mean_c,
         std=std_c,
@@ -80,7 +123,7 @@ def main() -> None:
         bin_width=BIN_WIDTH,
     )
 
-    fig_path = OUT_DIR / f"concentration_pdf_{CASE_NAME}_y{(600-Y_IDX)/20}_x{(X_IDX-300)/20}.png"
+    fig_path = OUT_DIR / f"concentration_pdf_{CASE_NAME}_y{(600-Y_IDX)/20}_x{(x_idx-300)/20}.png"
     # Plot as histogram (bars) to show probability density
     import matplotlib.pyplot as plt
 
@@ -99,7 +142,7 @@ def main() -> None:
 
     ax.set_xlabel("Concentration")
     ax.set_ylabel("Probability density")
-    ax.set_title(f"Concentration PDF at (y={(600-Y_IDX)/20}, x={(X_IDX-300)/20})")
+    ax.set_title(f"Concentration PDF at (y={(600-Y_IDX)/20}, x={(x_idx-300)/20})")
     ax.set_xlim(*XLIM)
     ax.set_ylim(*YLIM)
     if Y_LEGEND:
