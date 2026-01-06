@@ -1,5 +1,5 @@
 """
-Draw RMS overlay: concentration RMS pcolormesh + RMS velocity quiver.
+Draw RMS overlay: concentration RMS pcolormesh + RMS velocity contours (no quiver).
 
 Edit the paths/settings below, then run:
     python tools/draw_rms_overlay.py
@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import cmasher as cmr
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = ROOT / "src"
@@ -23,15 +24,16 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 # -------------------------------------------------------------------
-U_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_u.npy")
-V_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_v.npy")
-W_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_w.npy")
-C_PATH = Path("E:/sPIV_PLIF_ProcessedData/PLIF/PLIF_nearbed_smoothed.npy")
-OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/RMS/rms")
+CASE_NAME = "diffusive"
+U_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_u.npy")
+V_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_v.npy")
+W_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_w.npy")
+C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/plif_{CASE_NAME}_smoothed.npy")
+OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/RMS/rms_overlay_{CASE_NAME}.png")
 CMIN = 0.01
 CMAX = 0.35
-RMS_OUT_DIR = Path("E:/sPIV_PLIF_ProcessedData/rms_fields")
-C_RMS_FILES: list[Path] = []
+RMS_OUT_DIR = Path(f"E:/sPIV_PLIF_ProcessedData/rms_fields/")
+C_RMS_FILES: list[Path] = [f"E:/sPIV_PLIF_ProcessedData/rms_fields/{CASE_NAME}_c_rms.npy"]
 # C_RMS_FILES: list[Path] = [ "E:/sPIV_PLIF_ProcessedData/rms_fields/baseline_c_rms.npy", 
 # "E:/sPIV_PLIF_ProcessedData/rms_fields/buoyant_c_rms.npy",
 # "E:/sPIV_PLIF_ProcessedData/rms_fields/diffusive_c_rms.npy",
@@ -49,19 +51,19 @@ C_UNDER_TRANSITION: float | None = 0.05
 C_UNDER_START: float | None = 1e-4
 C_UNDER_END: float | None = 5e-4
 PCOLORMESH_ALPHA = 0.85
-CONTOUR_LEVELS: int | list[float] | None = None
-CONTOUR_COLOR = "#555555"
+CONTOUR_LEVELS: int | list[float] | None = [0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.10]
+CONTOUR_COLOR = "#000000"
 CONTOUR_WIDTH = 0.75
 CONTOUR_BOX_FRACTION: tuple[float, float, float, float] | None = None
 CONTOUR_LEVELS_IN_BOX: int | list[float] | None = None
 CONTOUR_WIDTH_IN_BOX: float | None = 0.8
 CONTOUR_COLOR_IN_BOX: str | None = None
-CONTOUR_CMAP: str | None = "cmr.ember"
+CONTOUR_CMAP: str | None = cmr.get_sub_cmap("cmr.neutral_r", 0.2, 1.0)
 CONTOUR_CMAP_IN_BOX: str | None = "cmr.ember"
-CONTOUR_LABELS = False
+CONTOUR_LABELS = True
 CONTOUR_LABELS_IN_BOX: bool | None = False
 
-# Quiver settings (match overlay style)
+# Quiver settings (disable to use velocity contours instead)
 SHOW_QUIVER = False
 QUIVER_CMAP: str | None = "cmr.neutral"
 QUIVER_COLOR = "#333333"
@@ -71,11 +73,12 @@ QUIVER_VMIN: float | None = None
 QUIVER_VMAX: float | None = None
 STRIDE_ROWS = 30
 STRIDE_COLS = 20
-QUIVER_SCALE = 0.03
+QUIVER_SCALE = 0.01
 QUIVER_HEADWIDTH = 4.5
 QUIVER_HEADLENGTH = 5.0
 QUIVER_HEADAXISLENGTH = 3.5
 QUIVER_TAILWIDTH = 0.003
+SPEED_INCLUDE_W = False  # if True, speed contours use sqrt(u^2+v^2+w^2); otherwise u/v only
 
 USE_MEMMAP = False
 APPLY_MEDIAN_SMOOTH = False
@@ -122,6 +125,7 @@ def _overlay_out_path(base_path: Path, label: str | None) -> Path:
 def _render_overlay(
     u_rms: np.ndarray,
     v_rms: np.ndarray,
+    w_rms: np.ndarray | None,
     c_rms: np.ndarray,
     out_path: Path,
     title_suffix: str | None,
@@ -135,6 +139,8 @@ def _render_overlay(
         v_rms,
         c_rms,
         out_path=out_path,
+        w=w_rms,
+        include_w=SPEED_INCLUDE_W,
         frame_idx=None,
         cmin=CMIN,
         cmax=CMAX,
@@ -174,6 +180,7 @@ def _render_overlay(
         quiver_headlength=QUIVER_HEADLENGTH,
         quiver_headaxislength=QUIVER_HEADAXISLENGTH,
         quiver_tailwidth=QUIVER_TAILWIDTH,
+        xlim=(-100, 100),
     )
 
 
@@ -183,14 +190,20 @@ def main() -> None:
 
     skip_c_rms = SKIP_C_RMS_CALC_WHEN_LISTED and len(C_RMS_FILES) > 0
     c_rms: np.ndarray | None = None
+    w_rms: np.ndarray | None = None
     if skip_c_rms:
         # Avoid heavy stack loads; rely on existing RMS arrays.
-        u_rms_path = RMS_OUT_DIR / "u_rms.npy"
-        v_rms_path = RMS_OUT_DIR / "v_rms.npy"
+        u_rms_path = RMS_OUT_DIR / f"{CASE_NAME}_u_rms.npy"
+        v_rms_path = RMS_OUT_DIR / f"{CASE_NAME}_v_rms.npy"
         if not u_rms_path.exists() or not v_rms_path.exists():
             raise FileNotFoundError("SKIP_C_RMS_CALC_WHEN_LISTED is True but u_rms/v_rms files are missing.")
         u_rms = np.load(u_rms_path)
         v_rms = np.load(v_rms_path)
+        if SPEED_INCLUDE_W:
+            w_rms_path = RMS_OUT_DIR / f"{CASE_NAME}_w_rms.npy"
+            if not w_rms_path.exists():
+                raise FileNotFoundError("SPEED_INCLUDE_W is True but w_rms file is missing.")
+            w_rms = np.load(w_rms_path)
         grid_shape = u_rms.shape
     else:
         stacks = load_fields(
@@ -205,12 +218,15 @@ def main() -> None:
 
         u_rms = _rms(stacks.u)
         v_rms = _rms(stacks.v)
+        w_rms = _rms(stacks.w) if SPEED_INCLUDE_W else None
         c_rms = _rms(stacks.c)
         c_rms = _median_smooth(c_rms, MEDIAN_WINDOW) if APPLY_MEDIAN_SMOOTH else c_rms
         RMS_OUT_DIR.mkdir(parents=True, exist_ok=True)
         np.save(RMS_OUT_DIR / "u_rms.npy", u_rms)
         np.save(RMS_OUT_DIR / "v_rms.npy", v_rms)
         np.save(RMS_OUT_DIR / "c_rms.npy", c_rms)
+        if w_rms is not None:
+            np.save(RMS_OUT_DIR / "w_rms.npy", w_rms)
         grid_shape = stacks.u.shape
 
     contour_box = None
@@ -244,7 +260,7 @@ def main() -> None:
 
     for label, c_field in overlays:
         out_path = _overlay_out_path(OUT_PATH, label)
-        _render_overlay(u_rms, v_rms, c_field, out_path, label, x_coords, y_coords, contour_box)
+        _render_overlay(u_rms, v_rms, w_rms, c_field, out_path, label, x_coords, y_coords, contour_box)
         print(f"Saved RMS overlay to {out_path}")
 
     print(f"Saved RMS fields to {RMS_OUT_DIR}")

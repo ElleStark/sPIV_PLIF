@@ -138,6 +138,7 @@ def overlay_quiver_figure(
     figsize: Tuple[float, float] = (8.0, 6.0),
     pcolormesh_alpha: float = 1.0,
     arrow_color: str = "k",
+    xlim: Optional[Tuple[float, float]] = None,
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Create an overlay figure of concentration as a colormap with velocity quiver.
@@ -156,6 +157,9 @@ def overlay_quiver_figure(
                 raise IndexError(f"frame_idx {frame_idx} out of range for {name} with {arr.shape[2]} frames")
             return arr[:, :, frame_idx]
         raise ValueError(f"{name} must be 2D or 3D; got shape {arr.shape}")
+
+    if include_w and w is None:
+        raise ValueError("include_w is True but w is None.")
 
     u_f = _extract_frame(u, "u")
     v_f = _extract_frame(v, "v")
@@ -276,6 +280,8 @@ def overlay_quiver_figure(
     ax.set_ylabel("y")
     if title:
         ax.set_title(title)
+    if xlim is not None:
+        ax.set_xlim(xlim)
     ax.set_aspect("equal", adjustable="box")
     fig.tight_layout()
     return fig, ax
@@ -299,8 +305,10 @@ def save_overlay_quiver(
 def overlay_contour_figure(
     u: np.ndarray,
     v: np.ndarray,
+    w: Optional[np.ndarray],
     c: np.ndarray,
     *,
+    include_w: bool = False,
     frame_idx: Optional[int],
     contour_levels: Optional[int | Sequence[float]] = 10,
     contour_color: str = "k",
@@ -341,6 +349,7 @@ def overlay_contour_figure(
     cmap_under_end: Optional[float] = None,
     figsize: Tuple[float, float] = (8.0, 6.0),
     pcolormesh_alpha: float = 1.0,
+    xlim: Optional[Tuple[float, float]] = None,
 ) -> tuple[plt.Figure, plt.Axes]:
     """Overlay concentration colormap with velocity-magnitude contours."""
 
@@ -357,10 +366,13 @@ def overlay_contour_figure(
 
     u_f = _extract_frame(u, "u")
     v_f = _extract_frame(v, "v")
+    w_f = _extract_frame(w, "w") if include_w and w is not None else None
     c_f = _extract_frame(c, "c")
 
     if u_f.shape != v_f.shape:
         raise ValueError(f"u and v shapes differ after slicing: {u_f.shape} vs {v_f.shape}")
+    if include_w and w_f is not None and w_f.shape != u_f.shape:
+        raise ValueError(f"w shape {w_f.shape} must match velocity shape {u_f.shape}")
     if c_f.shape != u_f.shape:
         raise ValueError(f"c shape {c_f.shape} must match velocity shape {u_f.shape}")
 
@@ -378,6 +390,8 @@ def overlay_contour_figure(
     X, Y = np.meshgrid(x_coords, y_coords, indexing="xy")
 
     mask_vec = np.isfinite(u_f) & np.isfinite(v_f)
+    if include_w and w_f is not None:
+        mask_vec &= np.isfinite(w_f)
     mask_c = np.isfinite(c_f)
     if log_scale:
         mask_c &= c_f > 0
@@ -440,7 +454,7 @@ def overlay_contour_figure(
     )
     fig.colorbar(h, ax=ax, label="c")
 
-    speed = np.sqrt(u_f ** 2 + v_f ** 2)
+    speed = np.sqrt(u_f ** 2 + v_f ** 2 + (w_f ** 2 if include_w and w_f is not None else 0.0))
     if contour_levels is not None:
         # Main contours (outside box or whole domain if no box provided).
         mask_out = mask_vec.copy()
@@ -552,6 +566,8 @@ def overlay_contour_figure(
     ax.set_ylabel("y")
     if title:
         ax.set_title(title)
+    if xlim is not None:
+        ax.set_xlim(xlim)
     ax.set_aspect("equal", adjustable="box")
     fig.tight_layout()
     return fig, ax
@@ -562,10 +578,14 @@ def save_overlay_contour(
     v: np.ndarray,
     c: np.ndarray,
     out_path: Path,
+    *,
+    w: Optional[np.ndarray] = None,
+    include_w: bool = False,
+    xlim: Optional[Tuple[float, float]] = None,
     **kwargs: Any,
 ) -> None:
     """Create a contour overlay figure and save to disk."""
-    fig, _ = overlay_contour_figure(u, v, c, **kwargs)
+    fig, _ = overlay_contour_figure(u, v, w, c, include_w=include_w, xlim=xlim, **kwargs)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=600)
     plt.close(fig)
