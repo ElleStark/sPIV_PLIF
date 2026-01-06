@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
-from typing import Iterable
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -25,25 +24,25 @@ if str(SRC_ROOT) not in sys.path:
 # Edit these settings for your dataset
 CASES: list[str] = ["smSource", "nearbed", "fractal", "baseline", "buoyant", "diffusive"]
 BASE_DIR = Path("E:/sPIV_PLIF_ProcessedData/flow_properties/Plots")
-PROPERTIES = {
-    # "turbulence_intensity": ("turbulence", "intensity"),
-    # "Taylor_microscale": ("Taylor", "microscale"),
-    # "Taylor_Re": ("Taylor", "Re"),
-    # "kolmogorov_time_scale": ("kolmogorov", "time"),
-    "tke": ("tke"),
-    # "epsilon": ("epsilon"),
-}
+PROPERTIES = [
+    "turbulence_intensity",
+    "Taylor_microscale",
+    "Taylor_Re",
+    "kolmogorov_time_scale",
+    "tke",
+    "epsilon",
+]
 ROWS_TO_AVG = 5  # number of rows in y to average together for smoothing
-USE_NPZ = False  # allow .npz in addition to .npy
+USE_NPZ = False  # allow .npz with the same naming convention in addition to .npy
 OUT_DIR = Path("E:/sPIV_PLIF_ProcessedData/flow_properties/Plots/profiles")
 XLABEL = "x index"
 Y_LABELS = {
-    # "turbulence_intensity": "Turbulence intensity",
-    # "Taylor_microscale": "Taylor microscale",
-    # "Taylor_Re": "Taylor Re",
-    # "kolmogorov_time_scale": "Kolmogorov time scale",
+    "turbulence_intensity": "Turbulence intensity",
+    "Taylor_microscale": "Taylor microscale",
+    "Taylor_Re": "Taylor Re",
+    "kolmogorov_time_scale": "Kolmogorov time scale",
     "tke": "Turbulent Kinetic Energy",
-    # "epsilon": "Dissipation rate",
+    "epsilon": "Dissipation rate",
 }
 DPI = 600
 CMAP = cmr.get_sub_cmap("cmr.rainforest", 0.0, 0.85)
@@ -51,22 +50,21 @@ LEGEND = False
 # -------------------------------------------------------------------
 
 
-def _find_prop_file(case_dir: Path, substrings: Iterable[str]) -> Path:
-    """Return the first file in FINAL_AllTimeSteps matching all substrings."""
+def _find_prop_file(case_dir: Path, prop_key: str, case_name: str) -> Path:
+    """Return the property file using the naming convention <prop>_<case>.(npy|npz)."""
     target_dir = case_dir / "FINAL_AllTimeSteps"
     if not target_dir.exists():
         raise FileNotFoundError(f"Missing FINAL_AllTimeSteps directory: {target_dir}")
-    candidates = []
+
+    base_name = f"{prop_key}_{case_name}"
     for ext in (".npy", ".npz"):
         if ext == ".npz" and not USE_NPZ:
             continue
-        candidates.extend(target_dir.glob(f"*{ext}"))
-    lower_subs = [s.lower() for s in substrings]
-    for p in candidates:
-        name = p.name.lower()
-        if all(sub in name for sub in lower_subs):
-            return p
-    raise FileNotFoundError(f"No file found in {target_dir} matching substrings {substrings}")
+        candidate = target_dir / f"{base_name}{ext}"
+        if candidate.exists():
+            return candidate
+    expected_ext = ".npz" if USE_NPZ else ".npy"
+    raise FileNotFoundError(f"Expected {base_name}{expected_ext} in {target_dir}")
 
 
 def _load_array(path: Path) -> np.ndarray:
@@ -101,29 +99,32 @@ def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     colors = [CMAP(v) for v in np.linspace(0, 1, len(CASES))]
 
-    for prop_key, substrings in PROPERTIES.items():
+    for prop_key in PROPERTIES:
         plt.figure(figsize=(4.5, 4.5))
         for idx, case in enumerate(CASES):
             case_dir = BASE_DIR / case
-            path = _find_prop_file(case_dir, substrings)
+            path = _find_prop_file(case_dir, prop_key, case)
             arr = _load_array(path)
             profile = _profile_along_y(arr, ROWS_TO_AVG)
             x_vals = np.arange(profile.shape[0])
             plt.plot(
-                np.flip(x_vals),
-                profile,
+                np.flip(x_vals)[30:],
+                profile[30:],
                 label=case,
                 color=colors[idx],
-                linewidth=1.0,
+                linewidth=0.9,
             )
+        # tke =np.load("E:/sPIV_PLIF_ProcessedData/flow_properties/Plots/baseline/FINAL_AllTimeSteps/tke_baseline.npy")
+        # plt.plot(np.flip(np.arange(tke.shape[0])),_profile_along_y(tke,ROWS_TO_AVG),label="baseline",color=colors[0],linewidth=1.0)
         plt.xlabel(XLABEL)
         plt.ylabel(Y_LABELS.get(prop_key, prop_key))
         plt.title(f"{Y_LABELS.get(prop_key, prop_key)} across cases")
-        plt.grid(True, linestyle="--", linewidth=0.6, alpha=0.5)
+        # plt.grid(True, linestyle="--", linewidth=0.6, alpha=0.5)
         if LEGEND:
             plt.legend()
         plt.tight_layout()
         out_path = OUT_DIR / f"{prop_key}_profiles.png"
+        # out_path = OUT_DIR / f"tke_profiles.png"
         plt.savefig(out_path, dpi=DPI)
         plt.close()
         print(f"Saved {prop_key} profiles to {out_path}")
