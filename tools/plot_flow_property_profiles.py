@@ -28,7 +28,7 @@ PROPERTIES = [
     "turbulence_intensity",
     "Taylor_microscale",
     "Taylor_Re",
-    "kolmogorov_time_scale",
+    "kolmogorov_length_scale",
     "tke",
     "epsilon",
 ]
@@ -40,13 +40,14 @@ Y_LABELS = {
     "turbulence_intensity": "Turbulence intensity",
     "Taylor_microscale": "Taylor microscale",
     "Taylor_Re": "Taylor Re",
-    "kolmogorov_time_scale": "Kolmogorov time scale",
+    "kolmogorov_length_scale": "Kolmogorov length scale",
     "tke": "Turbulent Kinetic Energy",
     "epsilon": "Dissipation rate",
 }
 DPI = 600
-CMAP = cmr.get_sub_cmap("cmr.rainforest", 0.0, 0.85)
+CMAP = cmr.get_sub_cmap("cmr.neutral", 0.0, 0.75)
 LEGEND = False
+MARKERS_PER_LINE = 11  # target number of markers per line (approx)
 # -------------------------------------------------------------------
 
 
@@ -98,6 +99,7 @@ def _profile_along_y(arr: np.ndarray, rows_to_avg: int) -> np.ndarray:
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     colors = [CMAP(v) for v in np.linspace(0, 1, len(CASES))]
+    markers = ["o", "s", "D", "^", "H", "X", "P", "*"]
 
     for prop_key in PROPERTIES:
         plt.figure(figsize=(4.5, 4.5))
@@ -107,12 +109,29 @@ def main() -> None:
             arr = _load_array(path)
             profile = _profile_along_y(arr, ROWS_TO_AVG)
             x_vals = np.arange(profile.shape[0])
+            x_plot = np.flip(x_vals)[30:]
+            y_plot = profile[30:]
+            marker_indices = np.unique(
+                np.linspace(0, len(x_plot) - 1, MARKERS_PER_LINE, dtype=int)
+            )
             plt.plot(
-                np.flip(x_vals)[30:],
-                profile[30:],
+                x_plot,
+                y_plot,
                 label=case,
                 color=colors[idx],
-                linewidth=0.9,
+                linestyle="-",
+                linewidth=0.5,
+            )
+            plt.plot(
+                x_plot[marker_indices],
+                y_plot[marker_indices],
+                label=None,
+                color=colors[idx],
+                marker=markers[idx % len(markers)],
+                linestyle="None",
+                markerfacecolor="none",
+                markeredgewidth=0.5,
+                markersize=8,
             )
         # tke =np.load("E:/sPIV_PLIF_ProcessedData/flow_properties/Plots/baseline/FINAL_AllTimeSteps/tke_baseline.npy")
         # plt.plot(np.flip(np.arange(tke.shape[0])),_profile_along_y(tke,ROWS_TO_AVG),label="baseline",color=colors[0],linewidth=1.0)
