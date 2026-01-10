@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 import cmasher as cmr
+from matplotlib.lines import Line2D
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
@@ -42,7 +43,7 @@ Y_LABELS = {
 
 DPI = 600
 CMAP = cmr.get_sub_cmap("cmr.neutral", 0.0, 0.75)
-LEGEND = False
+LEGEND = True
 MARKERS_PER_LINE = 11  # target number of markers per line (approx)
 # -------------------------------------------------------------------
 
@@ -100,7 +101,7 @@ def main() -> None:
     if QC_PLOTS:
         QC_DIR.mkdir(parents=True, exist_ok=True)
     colors = [CMAP(v) for v in np.linspace(0, 1, len(CASES))]
-    markers = ["v", "s", "o", "^", "D", "X", "P", "*"]
+    markers = ["o", "s", "D", "^", "H", "X", "P", "*"]
 
     arrays: dict[str, dict[str, np.ndarray]] = {}
     means: dict[str, dict[str, float]] = {}
@@ -132,6 +133,8 @@ def main() -> None:
 
     for component in COMPONENTS:
         plt.figure(figsize=(4.5, 4.5))
+        legend_handles: list[Line2D] = []
+        legend_labels: list[str] = []
         for idx, case in enumerate(CASES):
             arr = arrays[case][component]
             profile = _profile_along_y(arr, ROWS_TO_AVG)
@@ -144,7 +147,7 @@ def main() -> None:
             plt.plot(
                 x_plot,
                 y_plot,
-                label=case,
+                label=None,
                 color=colors[idx],
                 linestyle="-",
                 linewidth=0.5,
@@ -152,7 +155,7 @@ def main() -> None:
             plt.plot(
                 x_plot[marker_indices],
                 y_plot[marker_indices],
-                label=None,
+                label=case,
                 color=colors[idx],
                 marker=markers[idx % len(markers)],
                 linestyle="None",
@@ -160,11 +163,25 @@ def main() -> None:
                 markeredgewidth=0.5,
                 markersize=8,
             )
+            legend_handles.append(
+                Line2D(
+                    [0],
+                    [0],
+                    color=colors[idx],
+                    marker=markers[idx % len(markers)],
+                    linestyle="-",
+                    linewidth=0.5,
+                    markerfacecolor="none",
+                    markeredgewidth=0.5,
+                    markersize=8,
+                )
+            )
+            legend_labels.append(case)
         plt.xlabel(XLABEL)
         plt.ylabel(Y_LABELS.get(component, component))
         plt.title(f"{Y_LABELS.get(component, component)} across cases")
         if LEGEND:
-            plt.legend()
+            plt.legend(legend_handles, legend_labels)
         plt.tight_layout()
         out_path = OUT_DIR / f"{FILE_PREFIX}_{component}_profiles.png"
         plt.savefig(out_path, dpi=DPI)
@@ -173,6 +190,8 @@ def main() -> None:
 
     if PLOT_COMPONENT_AVG:
         plt.figure(figsize=(4.5, 4.5))
+        legend_handles = []
+        legend_labels = []
         for idx, case in enumerate(CASES):
             avg_arr = 0.5 * (arrays[case]["u_cross_stream"] + arrays[case]["u_streamwise"])
             profile = _profile_along_y(avg_arr, ROWS_TO_AVG)
@@ -185,7 +204,7 @@ def main() -> None:
             plt.plot(
                 x_plot,
                 y_plot,
-                label=case,
+                label=None,
                 color=colors[idx],
                 linestyle="-",
                 linewidth=0.5,
@@ -193,7 +212,7 @@ def main() -> None:
             plt.plot(
                 x_plot[marker_indices],
                 y_plot[marker_indices],
-                label=None,
+                label=case,
                 color=colors[idx],
                 marker=markers[idx % len(markers)],
                 linestyle="None",
@@ -201,11 +220,25 @@ def main() -> None:
                 markeredgewidth=0.5,
                 markersize=8,
             )
+            legend_handles.append(
+                Line2D(
+                    [0],
+                    [0],
+                    color=colors[idx],
+                    marker=markers[idx % len(markers)],
+                    linestyle="-",
+                    linewidth=0.5,
+                    markerfacecolor="none",
+                    markeredgewidth=0.5,
+                    markersize=8,
+                )
+            )
+            legend_labels.append(case)
         plt.xlabel(XLABEL)
         plt.ylabel(Y_LABELS.get("u_avg", "u_avg"))
         plt.title(f"{Y_LABELS.get('u_avg', 'u_avg')} across cases")
         if LEGEND:
-            plt.legend()
+            plt.legend(legend_handles, legend_labels)
         plt.tight_layout()
         out_path = OUT_DIR / f"{FILE_PREFIX}_u_avg_profiles.png"
         plt.savefig(out_path, dpi=DPI)

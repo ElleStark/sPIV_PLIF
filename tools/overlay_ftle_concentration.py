@@ -22,19 +22,19 @@ if str(SRC_ROOT) not in sys.path:
 
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
-FTLE_PATH = Path("data/FTLE_t50.0to50.05s_fractalCasev2.npy")  # 2D or 3D with leading dim to squeeze
-CASE_NAME = "fractal"
+FTLE_PATH = Path("E:/sPIV_PLIF_ProcessedData/FTLE_data/FTLE_t100.0to100.05s_rk4_nearbedCase.npy")  # 2D or 3D with leading dim to squeeze
+CASE_NAME = "nearbed"
 CONCENTRATION_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/plif_{CASE_NAME}_smoothed.npy")
 X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
 Y_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
-FRAME_IDX = 1000  # concentration frame to overlay
+FRAME_IDX = 2000  # concentration frame to overlay
 OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/FTLE/ftle_conc_overlay_{CASE_NAME}.png")
 CONC_CMAP = cmr.ocean_r
-FTLE_CMAP = 'Greys'
+FTLE_CMAP = cmr.get_sub_cmap("cmr.sunburst_r", 0, 0.6)
 FTLE_LEVELS: int | list[float] | None = 40  # e.g., 40 or explicit list; None disables contours
 CONC_VMIN: float | None = 0.005  # set to float to fix scale; None auto-scales
 CONC_VMAX: float | None = 1
-FTLE_VMIN: float | None = -8
+FTLE_VMIN: float | None = -5
 FTLE_VMAX: float | None = 1
 CONC_LOG_SCALE = True  # set True for LogNorm on concentration
 XLIM: tuple[float, float] | None = (-100.0, 100.0)
@@ -113,7 +113,7 @@ def main() -> None:
         vmin=None if CONC_LOG_SCALE else conc_vmin,
         vmax=None if CONC_LOG_SCALE else conc_vmax,
         norm=conc_norm,
-        alpha=0.65,
+        alpha=0.6,
     )
 
     ax.set_xlabel("x")
