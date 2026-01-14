@@ -23,7 +23,7 @@ if str(SRC_ROOT) not in sys.path:
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
-CASE_NAMES = ["smSource", "nearbed", "fractal", "diffusive", "buoyant", "baseline"]
+CASE_NAMES = ["nearbed", "fractal", "buoyant", "baseline"]
 PIV_DIR = BASE_PATH / "PIV"
 OUT_DIR = BASE_PATH / "Plots" / "w_stats"
 X_COORDS_PATH: Path | None = BASE_PATH / "x_coords.npy"
@@ -32,7 +32,7 @@ X_SLICE = slice(None)  # applied to axis 1 (x/columns)
 Y_SLICE = slice(None)  # applied to axis 0 (y/rows)
 T_SLICE = slice(None)
 TIME_AXIS = 2  # axis along which mean/variance are computed
-USE_MEMMAP = True
+USE_MEMMAP = False
 SAVE_ARRAYS = True
 ARRAY_OUT_DIR = BASE_PATH / "mean_variance_fields"
 
@@ -121,6 +121,10 @@ def main() -> None:
             print(f"[skip] missing w file for case '{case}': {w_path}")
             continue
         w_stack = np.load(w_path, mmap_mode="r" if USE_MEMMAP else None)
+        # w_stack = np.flipud(w_stack)
+        # np.save(w_path, w_stack)  # overwrite with flipped version
+
+
         w_stack = w_stack[Y_SLICE, X_SLICE, T_SLICE]
 
         w_mean, w_var = _compute_mean_variance(w_stack)
