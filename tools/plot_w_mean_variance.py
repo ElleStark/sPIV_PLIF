@@ -23,7 +23,7 @@ if str(SRC_ROOT) not in sys.path:
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
-CASE_NAMES = ["nearbed", "fractal", "buoyant", "baseline"]
+CASE_NAMES = ["baseline", "smSource", "diffusive", "buoyant", "fractal", "nearbed"]
 PIV_DIR = BASE_PATH / "PIV"
 OUT_DIR = BASE_PATH / "Plots" / "w_stats"
 X_COORDS_PATH: Path | None = BASE_PATH / "x_coords.npy"
@@ -33,10 +33,10 @@ Y_SLICE = slice(None)  # applied to axis 0 (y/rows)
 T_SLICE = slice(None)
 TIME_AXIS = 2  # axis along which mean/variance are computed
 USE_MEMMAP = False
-SAVE_ARRAYS = True
+SAVE_ARRAYS = False
 ARRAY_OUT_DIR = BASE_PATH / "mean_variance_fields"
 
-MEAN_CMAP = cmr.viola_r
+MEAN_CMAP = cmr.viola
 VAR_CMAP = cmr.rainforest_r
 MEAN_VMIN: float | None = -0.1
 MEAN_VMAX: float | None = 0.1

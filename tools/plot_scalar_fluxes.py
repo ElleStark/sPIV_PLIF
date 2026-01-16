@@ -31,7 +31,7 @@ from src.sPIV_PLIF_postprocessing.analysis.flow_properties import load_mean_velo
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "nearbed" 
+CASE_NAME = "fractal" 
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"plif_{CASE_NAME}_smoothed.npy"
 FLX_DIR = BASE_PATH / "flow_properties" / "flx_u_v_w"
@@ -45,18 +45,18 @@ MEAN_X_SLICE = X_SLICE
 MEAN_Y_SLICE = CONC_Y_SLICE
 XLABEL = "x index"
 YLABEL = "y index"
-CMAP = cmr.prinsenvlag
+CMAP = cmr.prinsenvlag_r
 QUIVER_MAG_THRESHOLD = 0.00015  # skip arrows below this magnitude
-WC_VMIN = -0.0001  # set None to auto-scale
-WC_VMAX = 0.0001   # set None to auto-scale
+WC_VMIN = -0.0005  # set None to auto-scale
+WC_VMAX = 0.0005   # set None to auto-scale
 MAG_VMIN = 0     # magnitude color lower bound; None auto-scales
 MAG_VMAX = 0.005     # magnitude color upper bound; None auto-scales
-ADV_WC_VMIN = -0.001  # set None to auto-scale for advective <w><c>
-ADV_WC_VMAX = 0.001  # set None to auto-scale for advective <w><c>
+ADV_WC_VMIN = -0.0005  # set None to auto-scale for advective <w><c>
+ADV_WC_VMAX = 0.0005  # set None to auto-scale for advective <w><c>
 ADV_MAG_VMIN = 0  # set None to auto-scale for advective magnitude
 ADV_MAG_VMAX = 0.005  # set None to auto-scale for advective magnitude
 FIG_DPI = 600
-COMPUTE_FLUXES = False  # set to False to skip computation and only plot existing data
+COMPUTE_FLUXES = True  # set to False to skip computation and only plot existing data
 PLOT_ADVECTIVE = True  # plot mean-velocity * mean-concentration fluxes
 SAVE_ADVECTIVE = True  # save advective flux arrays to disk
 # -------------------------------------------------------------------
@@ -171,9 +171,10 @@ def main() -> None:
         w_flx = w_flx[X_SLICE, VEL_Y_SLICE, T_SLICE]
 
         # Load concentration and compute fluctuations on the same region/time span
-        conc_mean = _load_concentration_mean()
+        # conc_mean = _load_concentration_mean()
         conc = np.load(CONCENTRATION_PATH, mmap_mode="r")
         conc = conc[X_SLICE, CONC_Y_SLICE, T_SLICE]
+        conc_mean = np.nanmean(conc, axis=2)
         conc_flx = conc - conc_mean[:, :, None]
 
         # Compute time-averaged scalar fluxes

@@ -30,7 +30,7 @@ from src.sPIV_PLIF_postprocessing.analysis import (
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "smSource" 
+CASE_NAME = "diffusive" 
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 INTERMITTENCY_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Intermittency/intermittency_{CASE_NAME}.npy")
 X_SLICE = slice(0, 600)

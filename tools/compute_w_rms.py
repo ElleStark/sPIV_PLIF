@@ -40,6 +40,7 @@ def main() -> None:
             print(f"[skip] missing w file for case '{case}': {w_path}")
             continue
         w = np.load(w_path)
+        
         if w.ndim != 3:
             raise ValueError(f"Expected 3D w array for case '{case}', got shape {w.shape}")
         w_rms = compute_rms(w, axis=TIME_AXIS)
