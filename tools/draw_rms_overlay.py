@@ -24,16 +24,17 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 # -------------------------------------------------------------------
-CASE_NAME = "diffusive"
+CASE_NAME = "smSource"
 U_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_u.npy")
 V_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_v.npy")
 W_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_w.npy")
-C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/plif_{CASE_NAME}_smoothed.npy")
+C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/plif_{CASE_NAME}_NOTsmoothed.npy")
 OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/RMS/rms_overlay_{CASE_NAME}.png")
 CMIN = 0.01
 CMAX = 0.35
 RMS_OUT_DIR = Path(f"E:/sPIV_PLIF_ProcessedData/rms_fields/")
-C_RMS_FILES: list[Path] = [f"E:/sPIV_PLIF_ProcessedData/rms_fields/{CASE_NAME}_c_rms.npy"]
+C_RMS_FILES = []
+# C_RMS_FILES: list[Path] = [f"E:/sPIV_PLIF_ProcessedData/rms_fields/{CASE_NAME}_c_rms.npy"]
 # C_RMS_FILES: list[Path] = [ "E:/sPIV_PLIF_ProcessedData/rms_fields/baseline_c_rms.npy", 
 # "E:/sPIV_PLIF_ProcessedData/rms_fields/buoyant_c_rms.npy",
 # "E:/sPIV_PLIF_ProcessedData/rms_fields/diffusive_c_rms.npy",
@@ -62,6 +63,7 @@ CONTOUR_CMAP: str | None = cmr.get_sub_cmap("cmr.neutral_r", 0.2, 1.0)
 CONTOUR_CMAP_IN_BOX: str | None = "cmr.ember"
 CONTOUR_LABELS = True
 CONTOUR_LABELS_IN_BOX: bool | None = False
+SHOW_VELOCITY_CONTOURS = False
 
 # Quiver settings (disable to use velocity contours instead)
 SHOW_QUIVER = False
@@ -155,11 +157,11 @@ def _render_overlay(
         cmap_under_start=C_UNDER_START,
         cmap_under_end=C_UNDER_END,
         pcolormesh_alpha=PCOLORMESH_ALPHA,
-        contour_levels=CONTOUR_LEVELS,
+        contour_levels=CONTOUR_LEVELS if SHOW_VELOCITY_CONTOURS else None,
         contour_color=CONTOUR_COLOR,
         contour_width=CONTOUR_WIDTH,
         contour_box=contour_box,
-        contour_levels_in_box=CONTOUR_LEVELS_IN_BOX,
+        contour_levels_in_box=CONTOUR_LEVELS_IN_BOX if SHOW_VELOCITY_CONTOURS else None,
         contour_color_in_box=CONTOUR_COLOR_IN_BOX,
         contour_width_in_box=CONTOUR_WIDTH_IN_BOX,
         contour_cmap=CONTOUR_CMAP,

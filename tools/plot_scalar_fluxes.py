@@ -6,7 +6,7 @@ and fluctuating velocity components. Velocity fluctuations are loaded from
 E:/sPIV_PLIF_ProcessedData/flow_properties/flx_u_v_w/*_flx_{CASE}_FINAL_AllTimeSteps.npy.
 Concentration fluctuations come from the PLIF stack.
 
-The plot shows a quiver of <c'u'> and <c'v'> with shading by <c'w'>.
+The plot shows a quiver of <c'u'> and <c'v'> with shading by |<c'v'>,<c'u'>|.
 
 Run:
     python tools/plot_scalar_fluxes.py
@@ -20,7 +20,8 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 import cmasher as cmr
-from matplotlib.colors import Normalize
+from scipy.interpolate import griddata
+from matplotlib.colors import LogNorm
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = ROOT / "src"
@@ -31,7 +32,7 @@ from src.sPIV_PLIF_postprocessing.analysis.flow_properties import load_mean_velo
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "fractal" 
+CASE_NAME = "diffusive" 
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"plif_{CASE_NAME}_smoothed.npy"
 FLX_DIR = BASE_PATH / "flow_properties" / "flx_u_v_w"
@@ -39,25 +40,25 @@ X_SLICE = slice(0, 600)
 CONC_Y_SLICE = slice(100, 500)  # apply to concentration to align with velocity trim
 VEL_Y_SLICE = slice(None)  # velocity fluctuations already trimmed in y; keep all
 T_SLICE = slice(0, 6000)
-QUIVER_STEP = 18  # subsample for quiver display
+QUIVER_STEP = 15  # subsample for quiver display
 OUT_DIR = BASE_PATH / "flow_properties" / "scalar_fluxes"
 MEAN_X_SLICE = X_SLICE
 MEAN_Y_SLICE = CONC_Y_SLICE
 XLABEL = "x index"
 YLABEL = "y index"
-CMAP = cmr.prinsenvlag_r
-QUIVER_MAG_THRESHOLD = 0.00015  # skip arrows below this magnitude
-WC_VMIN = -0.0005  # set None to auto-scale
-WC_VMAX = 0.0005   # set None to auto-scale
-MAG_VMIN = 0     # magnitude color lower bound; None auto-scales
+MAG_CMAP = cmr.get_sub_cmap(cmr.rainforest_r, 0, 0.6)
+QUIVER_MAG_THRESHOLD = 0.00012  # skip arrows below this magnitude
+QUIVER_LENGTH = 16.0  # constant arrow length in axis units
+SHOW_TURB_MAG_OVERLAY = True  # show |<c'v'>,<c'u'>| background for turbulent fluxes
+MAG_VMIN = 0.0001     # magnitude color lower bound; None auto-scales
 MAG_VMAX = 0.005     # magnitude color upper bound; None auto-scales
-ADV_WC_VMIN = -0.0005  # set None to auto-scale for advective <w><c>
-ADV_WC_VMAX = 0.0005  # set None to auto-scale for advective <w><c>
+SHOW_ADV_MAG_OVERLAY = True  # show |<v><c>, <u><c>| background for advective fluxes
 ADV_MAG_VMIN = 0  # set None to auto-scale for advective magnitude
 ADV_MAG_VMAX = 0.005  # set None to auto-scale for advective magnitude
+DIFFUSIVE_FILL_NANS = True  # fill NaNs via nearest-neighbor interpolation for diffusive case
 FIG_DPI = 600
 COMPUTE_FLUXES = True  # set to False to skip computation and only plot existing data
-PLOT_ADVECTIVE = True  # plot mean-velocity * mean-concentration fluxes
+PLOT_ADVECTIVE = False  # plot mean-velocity * mean-concentration fluxes
 SAVE_ADVECTIVE = True  # save advective flux arrays to disk
 # -------------------------------------------------------------------
 
@@ -69,10 +70,9 @@ def _plot_flux_quiver(
     *,
     title: str,
     fig_path: Path,
-    wc_vmin: float | None,
-    wc_vmax: float | None,
     mag_vmin: float | None,
     mag_vmax: float | None,
+    show_mag_overlay: bool,
 ) -> None:
     # Prepare quiver grid (subsample for readability)
     x_offset = X_SLICE.start or 0
@@ -87,54 +87,52 @@ def _plot_flux_quiver(
     uc_q = uc_flux[::step, ::step]
     vc_q = vc_flux[::step, ::step]
     mag_q = np.hypot(uc_q, vc_q)
-    # Normalize vectors so arrow length stays short; color encodes magnitude
+    # Normalize vectors so arrows show direction only
     mag_safe = np.maximum(mag_q, 1e-12)
     uc_dir = uc_q / mag_safe
     vc_dir = vc_q / mag_safe
     mask = mag_q >= QUIVER_MAG_THRESHOLD
     uc_dir = np.where(mask, uc_dir, np.nan)
     vc_dir = np.where(mask, vc_dir, np.nan)
-    mag_plot = np.where(mask, mag_q, np.nan)
 
-    # Log-scale sizing for arrows (applied to direction vectors)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        log_mag = np.log10(mag_plot)
-    log_min = np.nanmin(log_mag) if np.isfinite(np.nanmin(log_mag)) else 0.0
-    log_max = np.nanmax(log_mag) if np.isfinite(np.nanmax(log_mag)) else 1.0
-    log_span = log_max - log_min if log_max > log_min else 1.0
-    size_factor = (log_mag - log_min) / log_span
-    size_factor = 0.2 + 0.8 * np.clip(size_factor, 0.0, 1.0)  # keep a floor so arrows remain visible
-    uc_draw = uc_dir * size_factor
-    vc_draw = vc_dir * size_factor
+    uc_draw = uc_dir * QUIVER_LENGTH
+    vc_draw = vc_dir * QUIVER_LENGTH
 
-    wc_vmin = wc_vmin if wc_vmin is not None else float(np.nanmin(wc_flux))
-    wc_vmax = wc_vmax if wc_vmax is not None else float(np.nanmax(wc_flux))
+    mag_full = np.hypot(uc_flux, vc_flux)
     try:
-        mag_auto_min = float(np.nanmin(mag_plot))
-        mag_auto_max = float(np.nanmax(mag_plot))
+        mag_auto_min = float(np.nanmin(mag_full))
+        mag_auto_max = float(np.nanmax(mag_full))
     except ValueError:
         mag_auto_min = 0.0
         mag_auto_max = 1.0
     mag_vmin = mag_vmin if mag_vmin is not None else mag_auto_min
     mag_vmax = mag_vmax if mag_vmax is not None else mag_auto_max
-    mag_norm = Normalize(vmin=mag_vmin, vmax=mag_vmax)
+    if mag_vmin is None or mag_vmin <= 0:
+        mag_vmin = max(1e-12, mag_auto_min if mag_auto_min > 0 else 1e-12)
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    h = ax.pcolormesh(Y_idx, X_idx, wc_flux, cmap=CMAP, shading="auto", vmin=wc_vmin, vmax=wc_vmax)
+    h = None
+    if show_mag_overlay:
+        h = ax.pcolormesh(
+            Y_idx,
+            X_idx,
+            mag_full,
+            cmap=MAG_CMAP,
+            shading="auto",
+            norm=LogNorm(vmin=mag_vmin, vmax=mag_vmax),
+        )
     quiv = ax.quiver(
         Xg_q,
         Yg_q,
         uc_draw,
         vc_draw,
-        mag_plot,
         angles="xy",
         scale_units="xy",
-        scale=0.02,
-        cmap=cmr.get_sub_cmap(cmr.neutral_r, 0.25, 1.0),
-        norm=mag_norm,
-        alpha=0.6,
-        linewidth=0.5,
-        width=0.008,
+        scale=1.0,
+        color="black",
+        alpha=0.8,
+        linewidth=0.3,
+        width=0.006,
         headwidth=3,
         headlength=4,
         headaxislength=3,
@@ -143,13 +141,28 @@ def _plot_flux_quiver(
     ax.set_ylabel(YLABEL)
     ax.set_title(title)
     ax.set_aspect("equal", adjustable="box")
-    fig.colorbar(h, ax=ax, label="<c'w'>")
-    fig.colorbar(quiv, ax=ax, label="|<c'v'>,<c'u'>|")
+    if h is not None:
+        fig.colorbar(h, ax=ax, label="|<c'v'>,<c'u'>|")
     fig.tight_layout()
 
     fig_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(fig_path, dpi=FIG_DPI)
     plt.close(fig)
+
+
+def _fill_nan_nearest(field: np.ndarray) -> np.ndarray:
+    mask = np.isnan(field)
+    if not np.any(mask):
+        return field
+    valid = ~mask
+    if not np.any(valid):
+        return field
+    coords = np.column_stack(np.nonzero(valid))
+    values = field[valid]
+    missing = np.column_stack(np.nonzero(mask))
+    filled = field.copy()
+    filled[mask] = griddata(coords, values, missing, method="nearest")
+    return filled
 
 
 def _load_concentration_mean() -> np.ndarray:
@@ -193,16 +206,23 @@ def main() -> None:
         vc_flux = np.load(OUT_DIR / f"vc_flux_{CASE_NAME}.npy", mmap_mode="r")
         wc_flux = np.load(OUT_DIR / f"wc_flux_{CASE_NAME}.npy", mmap_mode="r")
 
+    uc_plot = uc_flux
+    vc_plot = vc_flux
+    wc_plot = wc_flux
+    if CASE_NAME.lower() == "diffusive" and DIFFUSIVE_FILL_NANS:
+        uc_plot = _fill_nan_nearest(uc_plot)
+        vc_plot = _fill_nan_nearest(vc_plot)
+        wc_plot = _fill_nan_nearest(wc_plot)
+
     _plot_flux_quiver(
-        uc_flux,
-        vc_flux,
-        wc_flux,
-        title=f"Scalar fluxes: quiver (<c'v'>, <c'u'>) shaded by <c'w'>\ncase={CASE_NAME}",
+        uc_plot,
+        vc_plot,
+        wc_plot,
+        title=f"Scalar fluxes: quiver (<c'v'>, <c'u'>) shaded by |<c'v'>,<c'u'>|\ncase={CASE_NAME}",
         fig_path=OUT_DIR / f"scalar_flux_quiver_{CASE_NAME}.png",
-        wc_vmin=WC_VMIN,
-        wc_vmax=WC_VMAX,
         mag_vmin=MAG_VMIN,
         mag_vmax=MAG_VMAX,
+        show_mag_overlay=SHOW_TURB_MAG_OVERLAY,
     )
 
     if PLOT_ADVECTIVE:
@@ -227,16 +247,23 @@ def main() -> None:
             np.save(OUT_DIR / f"vc_advective_{CASE_NAME}.npy", vc_adv)
             np.save(OUT_DIR / f"wc_advective_{CASE_NAME}.npy", wc_adv)
 
+        uc_adv_plot = uc_adv
+        vc_adv_plot = vc_adv
+        wc_adv_plot = wc_adv
+        if CASE_NAME.lower() == "diffusive" and DIFFUSIVE_FILL_NANS:
+            uc_adv_plot = _fill_nan_nearest(uc_adv_plot)
+            vc_adv_plot = _fill_nan_nearest(vc_adv_plot)
+            wc_adv_plot = _fill_nan_nearest(wc_adv_plot)
+
         _plot_flux_quiver(
-            uc_adv,
-            vc_adv,
-            wc_adv,
-            title=f"Advective fluxes: quiver (<v><c>, <u><c>) shaded by <w><c>\ncase={CASE_NAME}",
+            uc_adv_plot,
+            vc_adv_plot,
+            wc_adv_plot,
+            title=f"Advective fluxes: quiver (<v><c>, <u><c>) shaded by |<v><c>, <u><c>|\ncase={CASE_NAME}",
             fig_path=OUT_DIR / f"advective_flux_quiver_{CASE_NAME}.png",
-            wc_vmin=ADV_WC_VMIN,
-            wc_vmax=ADV_WC_VMAX,
             mag_vmin=ADV_MAG_VMIN,
             mag_vmax=ADV_MAG_VMAX,
+            show_mag_overlay=SHOW_ADV_MAG_OVERLAY,
         )
 
     print(f"Saved scalar flux arrays to {OUT_DIR}")
