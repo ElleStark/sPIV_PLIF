@@ -24,11 +24,11 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 # -------------------------------------------------------------------
-CASE_NAME = "smSource"
+CASE_NAME = "nearbed"
 U_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_u.npy")
 V_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_v.npy")
 W_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_w.npy")
-C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/plif_{CASE_NAME}_NOTsmoothed.npy")
+C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/Old/plif_{CASE_NAME}.npy")
 OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/RMS/rms_overlay_{CASE_NAME}.png")
 CMIN = 0.01
 CMAX = 0.35

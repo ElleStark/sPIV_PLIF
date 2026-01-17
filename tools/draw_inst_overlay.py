@@ -25,14 +25,14 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 # -------------------------------------------------------------------
-CASE_NAME = "fractal"
+CASE_NAME = "baseline"
 U_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_u.npy")
 V_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_v.npy")
 W_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_w.npy")
-C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/PLIF_{CASE_NAME}_smoothed.npy")
-FRAME_IDX = 8  # frame index to plot
-OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/Fractal/overlay_frame{FRAME_IDX}_rainbow.png")
-CMIN = 0.015
+C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/Old/PLIF_{CASE_NAME}.npy")
+FRAME_IDX = 1000  # frame index to plot
+OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/{CASE_NAME}/overlay_frame{FRAME_IDX}_rainbow.png")
+CMIN = 0.005
 CMAX = 1.0
 X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
 Y_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
@@ -44,6 +44,7 @@ C_UNDER_TRANSITION: float | None = 0.1  # fraction of cmap for white->jet blend
 C_UNDER_START: float | None = 0.01
 C_UNDER_END: float | None = 0.02
 PCOLORMESH_ALPHA = 0.85  # reduce saturation/opacity of the concentration field
+X_LIMITS: tuple[float, float] | None = (-100.0, 100.0)
 CONTOUR_LEVELS: int | list[float] | None = None  # disable contours for snapshots
 CONTOUR_COLOR = "#555555"
 CONTOUR_WIDTH = 0.75
@@ -75,7 +76,7 @@ QUIVER_TAILWIDTH = 0.003
 USE_MEMMAP = False  # set True to load with mmap_mode='r'
 LOAD_FRAME_ONLY = True  # True loads just FRAME_IDX; False loads full stacks
 USE_DARK_BACKGROUND = False
-APPLY_MEDIAN_SMOOTH = True
+APPLY_MEDIAN_SMOOTH = False
 MEDIAN_WINDOW = 3  # pixels
 
 
@@ -158,6 +159,7 @@ def main() -> None:
         cmap_under_start=C_UNDER_START,
         cmap_under_end=C_UNDER_END,
         pcolormesh_alpha=PCOLORMESH_ALPHA,
+        xlim=X_LIMITS,
         contour_levels=CONTOUR_LEVELS,
         contour_color=CONTOUR_COLOR,
         contour_width=CONTOUR_WIDTH,
