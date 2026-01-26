@@ -34,18 +34,18 @@ RMS_CASES: list[tuple[str, Path]] = [
 ]
 # List of (label, path) pairs for single .npy RMS concentration arrays
 RMS_C_ARRAYS: list[tuple[str, Path]] = [
-    ("smSource", Path("E:/sPIV_PLIF_ProcessedData/rms_fields/smSource_c_rms.npy")),
-    ("nearbed", Path("E:/sPIV_PLIF_ProcessedData/rms_fields/nearbed_c_rms.npy")),
-    ("fractal", Path("E:/sPIV_PLIF_ProcessedData/rms_fields/fractal_c_rms.npy")),
+    # ("smSource", Path("E:/sPIV_PLIF_ProcessedData/rms_fields/smSource_c_rms.npy")),
+    # ("nearbed", Path("E:/sPIV_PLIF_ProcessedData/rms_fields/nearbed_c_rms.npy")),
+    # ("fractal", Path("E:/sPIV_PLIF_ProcessedData/rms_fields/fractal_c_rms.npy")),
     ("baseline", Path("E:/sPIV_PLIF_ProcessedData/rms_fields/baseline_c_rms.npy")),
-    ("buoyant", Path("E:/sPIV_PLIF_ProcessedData/rms_fields/buoyant_c_rms.npy")),
-    ("diffusive", Path("E:/sPIV_PLIF_ProcessedData/rms_fields/diffusive_c_rms.npy")),
+    # ("buoyant", Path("E:/sPIV_PLIF_ProcessedData/rms_fields/buoyant_c_rms.npy")),
+    # ("diffusive", Path("E:/sPIV_PLIF_ProcessedData/rms_fields/diffusive_c_rms.npy")),
 ]
 
 X_PATH = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
 Y_PATH = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
 TARGET_Y_MM = [250.0, 150.0, 50.0]
-OUT_DIR = Path("E:/sPIV_PLIF_ProcessedData/Plots/RMS/Profiles")
+OUT_DIR = Path("E:/sPIV_PLIF_ProcessedData/Plots/RMS/Profiles/baseline_only")
 XLABEL = "x (mm)"
 YLABEL = "RMS concentration"
 NORMALIZE_TO_MAX = False
@@ -55,7 +55,7 @@ LINE_WIDTH = 1.25
 XLIM = (-60, 60)
 SET_YLIM_TO_DATA_MAX = True
 ROWS_TO_AVERAGE = 10
-YLIM = (0.0, 0.38)
+YLIM = (0.0, 0.25)
 
 
 def _load_rms_c(path: Path) -> np.ndarray:

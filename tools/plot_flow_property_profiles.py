@@ -22,7 +22,7 @@ if str(SRC_ROOT) not in sys.path:
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASES: list[str] = ["smSource", "nearbed", "fractal", "baseline", "buoyant", "diffusive"]
+CASES: list[str] = ["fractal", "baseline"]
 BASE_DIR = Path("E:/sPIV_PLIF_ProcessedData/flow_properties/Plots")
 PROPERTIES = [
     "turbulence_intensity",
@@ -34,7 +34,7 @@ PROPERTIES = [
 ]
 ROWS_TO_AVG = 5  # number of rows in y to average together for smoothing
 USE_NPZ = False  # allow .npz with the same naming convention in addition to .npy
-OUT_DIR = Path("E:/sPIV_PLIF_ProcessedData/flow_properties/Plots/profiles")
+OUT_DIR = Path("E:/sPIV_PLIF_ProcessedData/flow_properties/Plots/profiles/baseline_vs_fractal")
 XLABEL = "x index"
 Y_LABELS = {
     "turbulence_intensity": "Turbulence intensity",

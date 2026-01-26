@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-
+import cmasher as cmr
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy.lib.stride_tricks import sliding_window_view
@@ -25,24 +25,30 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 # -------------------------------------------------------------------
-CASE_NAME = "baseline"
+CASE_NAME = "fractal"
 U_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_u.npy")
 V_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_v.npy")
 W_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/piv_{CASE_NAME}_w.npy")
-C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/Old/PLIF_{CASE_NAME}.npy")
-FRAME_IDX = 1000  # frame index to plot
-OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/{CASE_NAME}/overlay_frame{FRAME_IDX}_rainbow.png")
-CMIN = 0.005
+C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/Old/plif_{CASE_NAME}.npy")
+FRAME_IDX = 175  # frame index to plot
+OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/{CASE_NAME}/c_frame{FRAME_IDX}_viznosmooth.png")
+CMIN = 0.01
 CMAX = 1.0
 X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
 Y_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
 LOG_SCALE = True  # set True to plot concentration on a log scale
-CMAP_NAME = "jet"  # jet for concentration
-CMAP_SLICE = (0.0, 1.0)
-C_UNDER: str | None = "white"  # fade in from white
-C_UNDER_TRANSITION: float | None = 0.1  # fraction of cmap for white->jet blend
-C_UNDER_START: float | None = 0.01
-C_UNDER_END: float | None = 0.02
+CMAP_NAME = cmr.cosmic# jet for concentration
+CMAP_SLICE = (0.0, 1)
+C_UNDER: str | None = None  # fade in from white
+C_UNDER_TRANSITION: float | None = None  # fraction of cmap for white->jet blend
+C_UNDER_START: float | None = None
+C_UNDER_END: float | None = None
+# CMAP_NAME = "jet"  # jet for concentration
+# CMAP_SLICE = (0.0, 1.0)
+# C_UNDER: str | None = "white"  # fade in from white
+# C_UNDER_TRANSITION: float | None = 0.1  # fraction of cmap for white->jet blend
+# C_UNDER_START: float | None = 0.01
+# C_UNDER_END: float | None = 0.02
 PCOLORMESH_ALPHA = 0.85  # reduce saturation/opacity of the concentration field
 X_LIMITS: tuple[float, float] | None = (-100.0, 100.0)
 CONTOUR_LEVELS: int | list[float] | None = None  # disable contours for snapshots
@@ -58,7 +64,7 @@ CONTOUR_LABELS = False
 CONTOUR_LABELS_IN_BOX: bool | None = False
 
 # Quiver settings (match mean overlay)
-SHOW_QUIVER = True
+SHOW_QUIVER = False
 QUIVER_CMAP: str | None = "cmr.neutral"
 QUIVER_COLOR = "#333333"  # medium gray arrows
 QUIVER_COLORBAR = True
@@ -75,7 +81,7 @@ QUIVER_TAILWIDTH = 0.003
 
 USE_MEMMAP = False  # set True to load with mmap_mode='r'
 LOAD_FRAME_ONLY = True  # True loads just FRAME_IDX; False loads full stacks
-USE_DARK_BACKGROUND = False
+USE_DARK_BACKGROUND = True
 APPLY_MEDIAN_SMOOTH = False
 MEDIAN_WINDOW = 3  # pixels
 
