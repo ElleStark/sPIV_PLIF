@@ -22,31 +22,31 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
-MEAN_FIELDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_fractal.npz")
-OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/overlay_mean_fractal_ctest.png")
-# CMIN = 0.015
-# CMAX = 1.0
+MEAN_FIELDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_baseline.npz")
+OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/mean_baseline_c.png")
+CMIN = 0.015
+CMAX = 1.0
 X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
 Y_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
-LOG_SCALE = False  # match instantaneous overlay defaults (linear scale)
-# CMAP_NAME = "jet"  # jet for concentration to match instantaneous overlay
-CMAP_SLICE = (0.0, 0.8)
-# C_UNDER: str | None = "white"  # fade in from white
-# C_UNDER_TRANSITION: float | None = 0.05  # fraction of cmap for white->jet blend
-# C_UNDER_START: float | None = 0.005
-# C_UNDER_END: float | None = 0.015
-CMIN = 0
-CMAX = 1.1
-CMAP_NAME = "cmr.rainforest_r"
-C_UNDER: str | None = None  # fade in from white
-C_UNDER_TRANSITION: float | None = None  # fraction of cmap for white->jet blend
-C_UNDER_START: float | None = None
-C_UNDER_END: float | None = None
+LOG_SCALE = True  # match instantaneous overlay defaults (linear scale)
+CMAP_NAME = "jet"  # jet for concentration to match instantaneous overlay
+CMAP_SLICE = (0.0, 1.0)
+C_UNDER: str | None = "white"  # fade in from white
+C_UNDER_TRANSITION: float | None = 0.1  # fraction of cmap for white->jet blend
+C_UNDER_START: float | None = 0.005
+C_UNDER_END: float | None = 0.015
+# CMIN = 0
+# CMAX = 1.1
+# CMAP_NAME = "cmr.rainforest_r"
+# C_UNDER: str | None = None  # fade in from white
+# C_UNDER_TRANSITION: float | None = None  # fraction of cmap for white->jet blend
+# C_UNDER_START: float | None = None
+# C_UNDER_END: float | None = None
 
 
 PCOLORMESH_ALPHA = 0.85  # reduce saturation/opacity of the concentration field
 APPLY_MEDIAN_SMOOTH = False
-MEDIAN_WINDOW = 3  # pixels
+MEDIAN_WINDOW = 9  # pixels
 CONTOUR_LEVELS: int | list[float] | None = None  # disable contours
 CONTOUR_COLOR = "#555555"
 CONTOUR_WIDTH = 0.75
