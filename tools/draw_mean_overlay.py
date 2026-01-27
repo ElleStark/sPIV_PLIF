@@ -22,20 +22,28 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
-# -------------------------------------------------------------------
 MEAN_FIELDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_fractal.npz")
-OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/overlay_mean_fractal_smoothed.png")
-CMIN = 0.015
-CMAX = 1.0
+OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/overlay_mean_fractal_ctest.png")
+# CMIN = 0.015
+# CMAX = 1.0
 X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
 Y_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
-LOG_SCALE = True  # match instantaneous overlay defaults (linear scale)
-CMAP_NAME = "jet"  # jet for concentration to match instantaneous overlay
-CMAP_SLICE = (0.0, 1.0)
-C_UNDER: str | None = "white"  # fade in from white
-C_UNDER_TRANSITION: float | None = 0.05  # fraction of cmap for white->jet blend
-C_UNDER_START: float | None = 0.005
-C_UNDER_END: float | None = 0.015
+LOG_SCALE = False  # match instantaneous overlay defaults (linear scale)
+# CMAP_NAME = "jet"  # jet for concentration to match instantaneous overlay
+CMAP_SLICE = (0.0, 0.8)
+# C_UNDER: str | None = "white"  # fade in from white
+# C_UNDER_TRANSITION: float | None = 0.05  # fraction of cmap for white->jet blend
+# C_UNDER_START: float | None = 0.005
+# C_UNDER_END: float | None = 0.015
+CMIN = 0
+CMAX = 1.1
+CMAP_NAME = "cmr.rainforest_r"
+C_UNDER: str | None = None  # fade in from white
+C_UNDER_TRANSITION: float | None = None  # fraction of cmap for white->jet blend
+C_UNDER_START: float | None = None
+C_UNDER_END: float | None = None
+
+
 PCOLORMESH_ALPHA = 0.85  # reduce saturation/opacity of the concentration field
 APPLY_MEDIAN_SMOOTH = False
 MEDIAN_WINDOW = 3  # pixels
@@ -50,7 +58,7 @@ CONTOUR_CMAP: str | None = "cmr.ember"  # use cmasher ember gradient
 CONTOUR_CMAP_IN_BOX: str | None = "cmr.ember"
 CONTOUR_LABELS = False  # disable labels to align with instantaneous overlay style
 CONTOUR_LABELS_IN_BOX: bool | None = False
-SHOW_QUIVER = True  # enable arrows
+SHOW_QUIVER = False  # enable arrows
 QUIVER_CMAP: str | None = "cmr.neutral"
 QUIVER_COLOR = "#333333"  # medium gray arrows for non-cmap path
 QUIVER_COLORBAR = True
@@ -97,6 +105,9 @@ def main() -> None:
     v_mean = np.array(mean_data["v"], copy=False)
     c_mean = np.array(mean_data["c"], copy=False)
     c_mean = _median_smooth(c_mean, MEDIAN_WINDOW) if APPLY_MEDIAN_SMOOTH else c_mean
+
+    # end test script
+
 
     x_coords = np.load(X_PATH) if X_PATH else None
     y_coords = np.load(Y_PATH) if Y_PATH else None
