@@ -25,12 +25,12 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 # -------------------------------------------------------------------
-U_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_u.npy")
-V_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_v.npy")
-W_PATH = Path("E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_w.npy")
-C_PATH = Path("E:/sPIV_PLIF_ProcessedData/PLIF/PLIF_nearbed.npy")
-FRAME_IDX = 2000  # frame index to plot
-OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/Nearbed/overlay_frame{FRAME_IDX}_rainbow_linear.png")
+U_PATH = Path("I:/Processed_Data/PIV/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_u.npy")
+V_PATH = Path("I:/Processed_Data/PIV/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_v.npy")
+W_PATH = Path("I:/Processed_Data/PIV/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_w.npy")
+C_PATH = Path("I:/sPIV_PLIF_ProcessedData/PLIF/Smoothed/plif_diffusive_smoothed.npy")
+FRAME_IDX = 0  # frame index to plot
+OUT_PATH = Path(f"Desktop/overlay_frame{FRAME_IDX}_rainbow.png")
 CMIN = 0.015
 CMAX = 1.0
 X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
@@ -56,7 +56,7 @@ CONTOUR_LABELS = False
 CONTOUR_LABELS_IN_BOX: bool | None = False
 
 # Quiver settings (match mean overlay)
-SHOW_QUIVER = True
+SHOW_QUIVER = False
 QUIVER_CMAP: str | None = "cmr.neutral"
 QUIVER_COLOR = "#333333"  # medium gray arrows
 QUIVER_COLORBAR = True
