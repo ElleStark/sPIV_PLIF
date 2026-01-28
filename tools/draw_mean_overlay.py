@@ -1,5 +1,5 @@
 """
-Draw an overlay of mean velocity/concentration fields from saved mean arrays.
+Draw an overlay of mean velocity magnitude with mean vectors from saved mean arrays.
 
 Edit the paths/settings below, then run:
     python tools/draw_mean_overlay.py
@@ -23,30 +23,32 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 MEAN_FIELDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_baseline.npz")
-OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/mean_baseline_c.png")
-CMIN = 0.015
-CMAX = 1.0
+OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/mean_baseline_velocity.png")
+CMIN = 0.0
+CMAX = 0.6
 X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
 Y_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
-LOG_SCALE = True  # match instantaneous overlay defaults (linear scale)
-CMAP_NAME = "jet"  # jet for concentration to match instantaneous overlay
+LOG_SCALE = False  # velocity magnitude usually plotted linearly
+CMAP_NAME = "turbo"  # perceptually uniform for velocity magnitude
 CMAP_SLICE = (0.0, 1.0)
-C_UNDER: str | None = "white"  # fade in from white
-C_UNDER_TRANSITION: float | None = 0.1  # fraction of cmap for white->jet blend
-C_UNDER_START: float | None = 0.005
-C_UNDER_END: float | None = 0.015
+# C_UNDER: str | None = "white"  # fade in from white
+# C_UNDER_TRANSITION: float | None = 0.1  # fraction of cmap for white->cmap blend
+# C_UNDER_START: float | None = 0.0
+# C_UNDER_END: float | None = 0.02
 # CMIN = 0
 # CMAX = 1.1
 # CMAP_NAME = "cmr.rainforest_r"
-# C_UNDER: str | None = None  # fade in from white
-# C_UNDER_TRANSITION: float | None = None  # fraction of cmap for white->jet blend
-# C_UNDER_START: float | None = None
-# C_UNDER_END: float | None = None
+C_UNDER: str | None = None  # fade in from white
+C_UNDER_TRANSITION: float | None = None  # fraction of cmap for white->jet blend
+C_UNDER_START: float | None = None
+C_UNDER_END: float | None = None
 
 
-PCOLORMESH_ALPHA = 0.85  # reduce saturation/opacity of the concentration field
+PCOLORMESH_ALPHA = 1  # reduce saturation/opacity of the magnitude field
 APPLY_MEDIAN_SMOOTH = False
 MEDIAN_WINDOW = 9  # pixels
+X_SUBSET: tuple[float, float] | None = [-30.0, 30.0]
+Y_SUBSET: tuple[float, float] | None = [220.0, 280.0]
 CONTOUR_LEVELS: int | list[float] | None = None  # disable contours
 CONTOUR_COLOR = "#555555"
 CONTOUR_WIDTH = 0.75
@@ -58,20 +60,20 @@ CONTOUR_CMAP: str | None = "cmr.ember"  # use cmasher ember gradient
 CONTOUR_CMAP_IN_BOX: str | None = "cmr.ember"
 CONTOUR_LABELS = False  # disable labels to align with instantaneous overlay style
 CONTOUR_LABELS_IN_BOX: bool | None = False
-SHOW_QUIVER = False  # enable arrows
+SHOW_QUIVER = True  # enable arrows
 QUIVER_CMAP: str | None = "cmr.neutral"
 QUIVER_COLOR = "#333333"  # medium gray arrows for non-cmap path
 QUIVER_COLORBAR = True
 QUIVER_ALPHA = 1.0
 QUIVER_VMIN: float | None = 0.1  # set to fix arrow color scale
 QUIVER_VMAX: float | None = 0.5  # set to match instantaneous overlay max
-STRIDE_ROWS = 30  # stride along array rows (y dimension)
-STRIDE_COLS = 20  # stride along array columns (x dimension)
-QUIVER_SCALE = 0.03  # increase to shorten arrows
-QUIVER_HEADWIDTH = 4.5  # width of the arrow head
-QUIVER_HEADLENGTH = 5.0  # length of the arrow head
-QUIVER_HEADAXISLENGTH = 3.5  # length of the arrow head axis
-QUIVER_TAILWIDTH = 0.003  # width of the arrow tail
+STRIDE_ROWS = 8  # stride along array rows (y dimension)
+STRIDE_COLS = 6  # stride along array columns (x dimension)
+QUIVER_SCALE = 0.06  # increase to shorten arrows
+QUIVER_HEADWIDTH = 3.0  # width of the arrow head
+QUIVER_HEADLENGTH = 4.0  # length of the arrow head
+QUIVER_HEADAXISLENGTH = 4.0  # length of the arrow head axis
+QUIVER_TAILWIDTH = 0.006  # width of the arrow tail
 
 
 def _median_smooth(arr: np.ndarray, k: int) -> np.ndarray:
@@ -92,25 +94,83 @@ def _median_smooth(arr: np.ndarray, k: int) -> np.ndarray:
     raise ValueError(f"Median smooth expects 2D or 3D input; got shape {arr.shape}")
 
 
+def _subset_xy(
+    u: np.ndarray,
+    v: np.ndarray,
+    c: np.ndarray,
+    x_coords: np.ndarray | None,
+    y_coords: np.ndarray | None,
+    x_subset: tuple[float, float] | None,
+    y_subset: tuple[float, float] | None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Subset arrays and coordinates to requested x/y bounds."""
+    ny, nx = u.shape[:2]
+    x_coords_arr = np.asarray(x_coords) if x_coords is not None else np.arange(nx)
+    y_coords_arr = np.asarray(y_coords) if y_coords is not None else np.arange(ny)
+
+    if x_coords_arr.ndim != 1 or y_coords_arr.ndim != 1:
+        raise ValueError("x_coords and y_coords must be 1D when subsetting.")
+    if len(x_coords_arr) != nx or len(y_coords_arr) != ny:
+        raise ValueError("x_coords/y_coords length must match the data grid dimensions.")
+
+    x_idx = np.arange(nx)
+    y_idx = np.arange(ny)
+    if x_subset is not None:
+        x_min, x_max = sorted(x_subset)
+        mask_x = (x_coords_arr >= x_min) & (x_coords_arr <= x_max)
+        if not np.any(mask_x):
+            raise ValueError(f"No x points fall within requested X_SUBSET {x_subset}.")
+        x_idx = np.where(mask_x)[0]
+    if y_subset is not None:
+        y_min, y_max = sorted(y_subset)
+        mask_y = (y_coords_arr >= y_min) & (y_coords_arr <= y_max)
+        if not np.any(mask_y):
+            raise ValueError(f"No y points fall within requested Y_SUBSET {y_subset}.")
+        y_idx = np.where(mask_y)[0]
+
+    def _slice(arr: np.ndarray) -> np.ndarray:
+        if arr.ndim == 2:
+            return arr[np.ix_(y_idx, x_idx)]
+        if arr.ndim == 3:
+            return arr[np.ix_(y_idx, x_idx, np.arange(arr.shape[2]))]
+        raise ValueError(f"Expected 2D or 3D arrays for subsetting; got {arr.shape}")
+
+    return (
+        _slice(u),
+        _slice(v),
+        _slice(c),
+        x_coords_arr[x_idx],
+        y_coords_arr[y_idx],
+    )
+
+
 def main() -> None:
     if not MEAN_FIELDS_PATH.exists():
         raise FileNotFoundError(f"Mean fields file not found: {MEAN_FIELDS_PATH}")
 
     mean_data = np.load(MEAN_FIELDS_PATH)
-    for key in ("u", "v", "c"):
+    for key in ("u", "v"):
         if key not in mean_data:
             raise KeyError(f"Missing '{key}' in {MEAN_FIELDS_PATH}")
 
     u_mean = np.array(mean_data["u"], copy=False)
     v_mean = np.array(mean_data["v"], copy=False)
-    c_mean = np.array(mean_data["c"], copy=False)
-    c_mean = _median_smooth(c_mean, MEDIAN_WINDOW) if APPLY_MEDIAN_SMOOTH else c_mean
-
-    # end test script
+    speed_mean = np.hypot(u_mean, v_mean)
+    speed_mean = _median_smooth(speed_mean, MEDIAN_WINDOW) if APPLY_MEDIAN_SMOOTH else speed_mean
 
 
     x_coords = np.load(X_PATH) if X_PATH else None
     y_coords = np.load(Y_PATH) if Y_PATH else None
+    if X_SUBSET is not None or Y_SUBSET is not None:
+        u_mean, v_mean, speed_mean, x_coords, y_coords = _subset_xy(
+            u_mean,
+            v_mean,
+            speed_mean,
+            x_coords,
+            y_coords,
+            X_SUBSET,
+            Y_SUBSET,
+        )
     contour_box = None
     if CONTOUR_BOX_FRACTION is not None:
         xmin_f, xmax_f, ymin_f, ymax_f = CONTOUR_BOX_FRACTION
@@ -130,7 +190,7 @@ def main() -> None:
     save_overlay_contour(
         u_mean,
         v_mean,
-        c_mean,
+        speed_mean,
         out_path=OUT_PATH,
         frame_idx=None,  # 2D arrays already sliced
         cmin=CMIN,
@@ -138,7 +198,7 @@ def main() -> None:
         x_coords=x_coords,
         y_coords=y_coords,
         log_scale=LOG_SCALE,
-        title="Mean field overlay (contours)",
+        title="Mean velocity magnitude with vectors",
         cmap_name=CMAP_NAME,
         cmap_slice=CMAP_SLICE,
         contour_levels=CONTOUR_LEVELS,
