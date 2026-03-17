@@ -44,6 +44,12 @@ SPATIAL_VMIN = None  # None -> symmetric auto range
 SPATIAL_VMAX = None  # None -> symmetric auto range
 PRODUCT_VMIN = None  # None -> symmetric auto range
 PRODUCT_VMAX = None  # None -> symmetric auto range
+
+# QC plot settings
+QC_FRAME = 0  # Frame index for QC plots
+CONC_CMAP = "viridis"  # Colormap for concentration plots
+CONC_VMIN = None
+CONC_VMAX = None
 # -------------------------------------------------------------------
 
 
@@ -57,8 +63,8 @@ def _load_concentration_stack() -> np.ndarray:
 
 
 def _compute_gradient_fields(conc: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    dcdx = np.gradient(conc, DX, axis=0)
-    dcdy = np.gradient(conc, DY, axis=1)
+    dcdy = np.gradient(conc, DX, axis=0)
+    dcdx = np.gradient(conc, DY, axis=1)
     dcdt = np.gradient(conc, DT, axis=2)
     return dcdx, dcdy, dcdt
 
@@ -115,47 +121,85 @@ def main() -> None:
     conc = _load_concentration_stack()
     dcdx, dcdy, dcdt = _compute_gradient_fields(conc)
 
-    dcdx_mean = np.nanmean(dcdx, axis=2)
-    dcdy_mean = np.nanmean(dcdy, axis=2)
+    # QC plots for a single frame
+    if QC_FRAME < conc.shape[2]:
+        # Plot concentration frame
+        _plot_field(
+            conc[:, :, QC_FRAME],
+            title=f"Concentration frame {QC_FRAME}\ncase={CASE_NAME}",
+            cbar_label="Concentration",
+            fig_path=OUT_DIR / f"concentration_frame_{QC_FRAME}_{CASE_NAME}.png",
+            cmap=CONC_CMAP,
+            vmin=CONC_VMIN,
+            vmax=CONC_VMAX,
+            log_scale=False,
+        )
+
+        # Plot dc/dx frame
+        _plot_field(
+            dcdx[:, :, QC_FRAME],
+            title=f"dc/dx frame {QC_FRAME}\ncase={CASE_NAME}",
+            cbar_label="dc/dx",
+            fig_path=OUT_DIR / f"dcdx_frame_{QC_FRAME}_{CASE_NAME}.png",
+            cmap=SPATIAL_CMAP,
+            vmin=SPATIAL_VMIN,
+            vmax=SPATIAL_VMAX,
+            log_scale=SPATIAL_LOG_SCALE,
+        )
+
+        # Plot dc/dy frame
+        _plot_field(
+            dcdy[:, :, QC_FRAME],
+            title=f"dc/dy frame {QC_FRAME}\ncase={CASE_NAME}",
+            cbar_label="dc/dy",
+            fig_path=OUT_DIR / f"dcdy_frame_{QC_FRAME}_{CASE_NAME}.png",
+            cmap=SPATIAL_CMAP,
+            vmin=SPATIAL_VMIN,
+            vmax=SPATIAL_VMAX,
+            log_scale=SPATIAL_LOG_SCALE,
+        )
+
+    # dcdx_mean = np.nanmean(dcdx, axis=2)
+    # dcdy_mean = np.nanmean(dcdy, axis=2)
     dcdx_dcdt_mean = np.nanmean(dcdx * dcdt, axis=2)
     dcdy_dcdt_mean = np.nanmean(dcdy * dcdt, axis=2)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    np.save(OUT_DIR / f"dcdx_mean_{CASE_NAME}.npy", dcdx_mean)
-    np.save(OUT_DIR / f"dcdy_mean_{CASE_NAME}.npy", dcdy_mean)
+    # np.save(OUT_DIR / f"dcdx_mean_{CASE_NAME}.npy", dcdx_mean)
+    # np.save(OUT_DIR / f"dcdy_mean_{CASE_NAME}.npy", dcdy_mean)
     np.save(OUT_DIR / f"dcdx_times_dcdt_mean_{CASE_NAME}.npy", dcdx_dcdt_mean)
     np.save(OUT_DIR / f"dcdy_times_dcdt_mean_{CASE_NAME}.npy", dcdy_dcdt_mean)
 
-    spatial_vmin = SPATIAL_VMIN
-    spatial_vmax = SPATIAL_VMAX
-    if spatial_vmin is None or spatial_vmax is None:
-        merged = np.concatenate([dcdx_mean.ravel(), dcdy_mean.ravel()])
-        lim = float(np.nanmax(np.abs(merged))) if np.any(np.isfinite(merged)) else 1.0
-        lim = max(lim, 1e-12)
-        spatial_vmin = -lim
-        spatial_vmax = lim
+    # spatial_vmin = SPATIAL_VMIN
+    # spatial_vmax = SPATIAL_VMAX
+    # if spatial_vmin is None or spatial_vmax is None:
+    #     merged = np.concatenate([dcdx_mean.ravel(), dcdy_mean.ravel()])
+    #     lim = float(np.nanmax(np.abs(merged))) if np.any(np.isfinite(merged)) else 1.0
+    #     lim = max(lim, 1e-12)
+    #     spatial_vmin = -lim
+    #     spatial_vmax = lim
 
-    _plot_field(
-        dcdx_mean,
-        title=f"Time-averaged signed spatial gradient <dc/dx>_t\ncase={CASE_NAME}",
-        cbar_label="<dc/dx>_t",
-        fig_path=OUT_DIR / f"dcdx_mean_{CASE_NAME}.png",
-        cmap=SPATIAL_CMAP,
-        vmin=spatial_vmin,
-        vmax=spatial_vmax,
-        log_scale=SPATIAL_LOG_SCALE,
-    )
+    # _plot_field(
+    #     dcdx_mean,
+    #     title=f"Time-averaged signed spatial gradient <dc/dx>_t\ncase={CASE_NAME}",
+    #     cbar_label="<dc/dx>_t",
+    #     fig_path=OUT_DIR / f"dcdx_mean_{CASE_NAME}.png",
+    #     cmap=SPATIAL_CMAP,
+    #     vmin=spatial_vmin,
+    #     vmax=spatial_vmax,
+    #     log_scale=SPATIAL_LOG_SCALE,
+    # )
 
-    _plot_field(
-        dcdy_mean,
-        title=f"Time-averaged signed spatial gradient <dc/dy>_t\ncase={CASE_NAME}",
-        cbar_label="<dc/dy>_t",
-        fig_path=OUT_DIR / f"dcdy_mean_{CASE_NAME}.png",
-        cmap=SPATIAL_CMAP,
-        vmin=spatial_vmin,
-        vmax=spatial_vmax,
-        log_scale=SPATIAL_LOG_SCALE,
-    )
+    # _plot_field(
+    #     dcdy_mean,
+    #     title=f"Time-averaged signed spatial gradient <dc/dy>_t\ncase={CASE_NAME}",
+    #     cbar_label="<dc/dy>_t",
+    #     fig_path=OUT_DIR / f"dcdy_mean_{CASE_NAME}.png",
+    #     cmap=SPATIAL_CMAP,
+    #     vmin=spatial_vmin,
+    #     vmax=spatial_vmax,
+    #     log_scale=SPATIAL_LOG_SCALE,
+    # )
 
     prod_vmin = PRODUCT_VMIN
     prod_vmax = PRODUCT_VMAX
