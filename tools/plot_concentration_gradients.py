@@ -14,7 +14,7 @@ from pathlib import Path
 import cmasher as cmr
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm, SymLogNorm
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
@@ -23,14 +23,15 @@ BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"plif_{CASE_NAME}_smoothed.npy"
 OUT_DIR = BASE_PATH / "Plots" / "concentration_gradients"
 
-X_SLICE = slice(0, 600)
+X_SLICE = slice(0, 601)
 Y_SLICE = slice(100, 500)
-T_SLICE = slice(0,500)  # e.g., slice(0, 2000)
+T_SLICE = slice(0,6000)  # e.g., slice(0, 2000)
 
 # Grid/time spacing used in gradient computations
 DX = 0.5
 DY = 0.5
 DT = 0.05
+Z_SCORE = True  # Whether to z-score the fields 
 
 XLABEL = "x index"
 YLABEL = "y index"
@@ -39,14 +40,17 @@ FIG_DPI = 600
 # Plot controls
 SPATIAL_CMAP = "RdBu_r"
 PRODUCT_CMAP = "RdBu_r"
-SPATIAL_LOG_SCALE = False  # signed fields should generally stay linear
-SPATIAL_VMIN = None  # None -> symmetric auto range
-SPATIAL_VMAX = None  # None -> symmetric auto range
-PRODUCT_VMIN = None  # None -> symmetric auto range
-PRODUCT_VMAX = None  # None -> symmetric auto range
+SPATIAL_LOG_SCALE = False  # signed fields can use symmetric log scale
+SPATIAL_VMIN = -1  # None -> symmetric auto range
+SPATIAL_VMAX = 1  # None -> symmetric auto range
+PRODUCT_VMIN = -1  # None -> symmetric auto range
+PRODUCT_VMAX = 1  # None -> symmetric auto range
+PRODUCT_LOG_SCALE = False  # signed fields can use symmetric log scale
+SPATIAL_THRESHOLD = 0.0001  # Values with |value| < threshold will be masked (not plotted)
+PRODUCT_THRESHOLD = 0.0001  # Values with |value| < threshold will be masked (not plotted)
 
 # QC plot settings
-QC_FRAME = 0  # Frame index for QC plots
+QC_FRAMES = [0, 100, 200, 500, 1000, 2000, 3000, 4000, 5000, 6000]  # Frame index for QC plots
 CONC_CMAP = "viridis"  # Colormap for concentration plots
 CONC_VMIN = None
 CONC_VMAX = None
@@ -79,20 +83,26 @@ def _plot_field(
     vmin: float | None = None,
     vmax: float | None = None,
     log_scale: bool = False,
+    threshold: float | None = None,
 ) -> None:
     x_offset = X_SLICE.start or 0
     y_offset = Y_SLICE.start or 0
     x_idx = np.arange(field_2d.shape[0]) + x_offset
     y_idx = np.arange(field_2d.shape[1]) + y_offset
 
+    # Apply threshold masking if specified
+    if threshold is not None:
+        field_2d = field_2d.copy()
+        field_2d[np.abs(field_2d) < threshold] = np.nan
+
     norm = None
     if log_scale:
-        finite_pos = field_2d[np.isfinite(field_2d) & (field_2d > 0)]
-        if finite_pos.size == 0:
-            raise ValueError("Log scale requested, but field has no positive finite values.")
-        vmin_eff = vmin if vmin is not None else float(np.nanmin(finite_pos))
-        vmax_eff = vmax if vmax is not None else float(np.nanmax(finite_pos))
-        norm = LogNorm(vmin=max(vmin_eff, 1e-12), vmax=vmax_eff)
+        finite_vals = field_2d[np.isfinite(field_2d)]
+        if finite_vals.size == 0:
+            raise ValueError("Log scale requested, but field has no finite values.")
+        abs_max = float(np.nanmax(np.abs(finite_vals)))
+        linthresh = max(abs_max * 1e-6, 1e-12)
+        norm = SymLogNorm(linthresh=linthresh, vmin=vmin, vmax=vmax)
 
     fig, ax = plt.subplots(figsize=(8, 6))
     h = ax.pcolormesh(
@@ -117,18 +127,29 @@ def _plot_field(
     plt.close(fig)
 
 
+def _zscore_array(field: np.ndarray) -> np.ndarray:
+    mean = np.nanmean(field)
+    std = np.nanstd(field)
+    if std < 1e-12:
+        return np.zeros_like(field)
+    return (field - mean) / std
+
+
 def main() -> None:
     conc = _load_concentration_stack()
     dcdx, dcdy, dcdt = _compute_gradient_fields(conc)
 
+
     # QC plots for a single frame
-    if QC_FRAME < conc.shape[2]:
+    for QC_FRAME in QC_FRAMES:
+        if QC_FRAME >= conc.shape[2]:
+            break
         # Plot concentration frame
         _plot_field(
             conc[:, :, QC_FRAME],
             title=f"Concentration frame {QC_FRAME}\ncase={CASE_NAME}",
             cbar_label="Concentration",
-            fig_path=OUT_DIR / f"concentration_frame_{QC_FRAME}_{CASE_NAME}.png",
+            fig_path=OUT_DIR / f"QC_frames/concentration_frame_{QC_FRAME}_{CASE_NAME}.png",
             cmap=CONC_CMAP,
             vmin=CONC_VMIN,
             vmax=CONC_VMAX,
@@ -140,7 +161,7 @@ def main() -> None:
             dcdx[:, :, QC_FRAME],
             title=f"dc/dx frame {QC_FRAME}\ncase={CASE_NAME}",
             cbar_label="dc/dx",
-            fig_path=OUT_DIR / f"dcdx_frame_{QC_FRAME}_{CASE_NAME}.png",
+            fig_path=OUT_DIR / f"QC_frames/dcdx_frame_{QC_FRAME}_{CASE_NAME}.png",
             cmap=SPATIAL_CMAP,
             vmin=SPATIAL_VMIN,
             vmax=SPATIAL_VMAX,
@@ -152,54 +173,91 @@ def main() -> None:
             dcdy[:, :, QC_FRAME],
             title=f"dc/dy frame {QC_FRAME}\ncase={CASE_NAME}",
             cbar_label="dc/dy",
-            fig_path=OUT_DIR / f"dcdy_frame_{QC_FRAME}_{CASE_NAME}.png",
+            fig_path=OUT_DIR / f"QC_frames/dcdy_frame_{QC_FRAME}_{CASE_NAME}.png",
             cmap=SPATIAL_CMAP,
             vmin=SPATIAL_VMIN,
             vmax=SPATIAL_VMAX,
             log_scale=SPATIAL_LOG_SCALE,
         )
+        
+        # Plot dc/dt frame
+        _plot_field(
+            dcdt[:, :, QC_FRAME],
+            title=f"dc/dt frame {QC_FRAME}\ncase={CASE_NAME}",
+            cbar_label="dc/dt",
+            fig_path=OUT_DIR / f"QC_frames/dcdt_frame_{QC_FRAME}_{CASE_NAME}.png",
+            cmap=SPATIAL_CMAP,
+            vmin=1,
+            vmax=-1,
+            log_scale=SPATIAL_LOG_SCALE,
+        )
 
-    # dcdx_mean = np.nanmean(dcdx, axis=2)
-    # dcdy_mean = np.nanmean(dcdy, axis=2)
-    dcdx_dcdt_mean = np.nanmean(dcdx * dcdt, axis=2)
+    dcdx_mean = np.nanmean(dcdx, axis=2)
+    dcdy_mean = np.nanmean(dcdy, axis=2)
+    dcdt_mean = np.nanmean(dcdt, axis=2)
+    corr_term = -dcdx * dcdt
+    print(f"corr_term shape: {corr_term.shape}")
+    dcdx_dcdt_mean = np.nanmean(corr_term, axis=2)
     dcdy_dcdt_mean = np.nanmean(dcdy * dcdt, axis=2)
 
+    if Z_SCORE:
+        dcdx_mean = _zscore_array(dcdx_mean)
+        dcdy_mean = _zscore_array(dcdy_mean)
+        dcdx_dcdt_mean = _zscore_array(dcdx_dcdt_mean)
+        dcdy_dcdt_mean = _zscore_array(dcdy_dcdt_mean)
+        
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    # np.save(OUT_DIR / f"dcdx_mean_{CASE_NAME}.npy", dcdx_mean)
-    # np.save(OUT_DIR / f"dcdy_mean_{CASE_NAME}.npy", dcdy_mean)
+    np.save(OUT_DIR / f"dcdx_mean_{CASE_NAME}.npy", dcdx_mean)
+    np.save(OUT_DIR / f"dcdy_mean_{CASE_NAME}.npy", dcdy_mean)
     np.save(OUT_DIR / f"dcdx_times_dcdt_mean_{CASE_NAME}.npy", dcdx_dcdt_mean)
     np.save(OUT_DIR / f"dcdy_times_dcdt_mean_{CASE_NAME}.npy", dcdy_dcdt_mean)
 
-    # spatial_vmin = SPATIAL_VMIN
-    # spatial_vmax = SPATIAL_VMAX
-    # if spatial_vmin is None or spatial_vmax is None:
-    #     merged = np.concatenate([dcdx_mean.ravel(), dcdy_mean.ravel()])
-    #     lim = float(np.nanmax(np.abs(merged))) if np.any(np.isfinite(merged)) else 1.0
-    #     lim = max(lim, 1e-12)
-    #     spatial_vmin = -lim
-    #     spatial_vmax = lim
+    spatial_vmin = SPATIAL_VMIN
+    spatial_vmax = SPATIAL_VMAX
+    if spatial_vmin is None or spatial_vmax is None:
+        merged = np.concatenate([dcdx_mean.ravel(), dcdy_mean.ravel()])
+        lim = float(np.nanmax(np.abs(merged))) if np.any(np.isfinite(merged)) else 1.0
+        lim = max(lim, 1e-12)
+        spatial_vmin = -lim
+        spatial_vmax = lim
 
-    # _plot_field(
-    #     dcdx_mean,
-    #     title=f"Time-averaged signed spatial gradient <dc/dx>_t\ncase={CASE_NAME}",
-    #     cbar_label="<dc/dx>_t",
-    #     fig_path=OUT_DIR / f"dcdx_mean_{CASE_NAME}.png",
-    #     cmap=SPATIAL_CMAP,
-    #     vmin=spatial_vmin,
-    #     vmax=spatial_vmax,
-    #     log_scale=SPATIAL_LOG_SCALE,
-    # )
+    _plot_field(
+        dcdx_mean,
+        title=f"Time-averaged signed spatial gradient <dc/dx>_t\ncase={CASE_NAME}",
+        cbar_label="<dc/dx>_t",
+        fig_path=OUT_DIR / f"dcdx_mean_{CASE_NAME}.png",
+        cmap=SPATIAL_CMAP,
+        vmin=spatial_vmin,
+        vmax=spatial_vmax,
+        log_scale=SPATIAL_LOG_SCALE,
+        threshold=SPATIAL_THRESHOLD,
+    )
 
-    # _plot_field(
-    #     dcdy_mean,
-    #     title=f"Time-averaged signed spatial gradient <dc/dy>_t\ncase={CASE_NAME}",
-    #     cbar_label="<dc/dy>_t",
-    #     fig_path=OUT_DIR / f"dcdy_mean_{CASE_NAME}.png",
-    #     cmap=SPATIAL_CMAP,
-    #     vmin=spatial_vmin,
-    #     vmax=spatial_vmax,
-    #     log_scale=SPATIAL_LOG_SCALE,
-    # )
+    _plot_field(
+        dcdy_mean,
+        title=f"Time-averaged signed spatial gradient <dc/dy>_t\ncase={CASE_NAME}",
+        cbar_label="<dc/dy>_t",
+        fig_path=OUT_DIR / f"dcdy_mean_{CASE_NAME}.png",
+        cmap=SPATIAL_CMAP,
+        vmin=spatial_vmin,
+        vmax=spatial_vmax,
+        log_scale=SPATIAL_LOG_SCALE,
+        threshold=SPATIAL_THRESHOLD,
+    )
+
+    _plot_field(
+        dcdt_mean,
+        title=f"Time-averaged signed spatial gradient <dc/dt>_t\ncase={CASE_NAME}",
+        cbar_label="<dc/dt>_t",
+        fig_path=OUT_DIR / f"dcdt_mean_{CASE_NAME}.png",
+        cmap=SPATIAL_CMAP,
+        vmin=spatial_vmin,
+        vmax=spatial_vmax,
+        log_scale=SPATIAL_LOG_SCALE,
+        threshold=SPATIAL_THRESHOLD,
+    )
+
 
     prod_vmin = PRODUCT_VMIN
     prod_vmax = PRODUCT_VMAX
@@ -214,22 +272,22 @@ def main() -> None:
         dcdx_dcdt_mean,
         title=f"Time-averaged signed product <(dc/dx)*(dc/dt)>_t\ncase={CASE_NAME}",
         cbar_label="<(dc/dx)*(dc/dt)>_t",
-        fig_path=OUT_DIR / f"dcdx_times_dcdt_mean_{CASE_NAME}.png",
+        fig_path=OUT_DIR / f"dcdx_times_dcdt_mean_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
         cmap=PRODUCT_CMAP,
         vmin=prod_vmin,
         vmax=prod_vmax,
-        log_scale=False,
+        log_scale=PRODUCT_LOG_SCALE,
     )
 
     _plot_field(
         dcdy_dcdt_mean,
         title=f"Time-averaged signed product <(dc/dy)*(dc/dt)>_t\ncase={CASE_NAME}",
         cbar_label="<(dc/dy)*(dc/dt)>_t",
-        fig_path=OUT_DIR / f"dcdy_times_dcdt_mean_{CASE_NAME}.png",
+        fig_path=OUT_DIR / f"dcdy_times_dcdt_mean_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
         cmap=PRODUCT_CMAP,
         vmin=prod_vmin,
         vmax=prod_vmax,
-        log_scale=False,
+        log_scale=PRODUCT_LOG_SCALE,
     )
 
     print(f"Saved outputs to {OUT_DIR}")
