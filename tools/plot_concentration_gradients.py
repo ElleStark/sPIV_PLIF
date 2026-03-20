@@ -11,10 +11,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import cmasher as cmr
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import LogNorm, SymLogNorm
+from matplotlib.colors import SymLogNorm
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
@@ -26,12 +25,13 @@ OUT_DIR = BASE_PATH / "Plots" / "concentration_gradients"
 X_SLICE = slice(0, 601)
 Y_SLICE = slice(100, 500)
 T_SLICE = slice(0,6000)  # e.g., slice(0, 2000)
+CHUNK_SIZE = 200  # number of frames to process at once when computing means
 
 # Grid/time spacing used in gradient computations
 DX = 0.5
 DY = 0.5
-DT = 0.05
-Z_SCORE = True  # Whether to z-score the fields 
+DT = 0.5
+Z_SCORE = False  # Whether to z-score the fields 
 
 XLABEL = "x index"
 YLABEL = "y index"
@@ -40,12 +40,12 @@ FIG_DPI = 600
 # Plot controls
 SPATIAL_CMAP = "RdBu_r"
 PRODUCT_CMAP = "RdBu_r"
-SPATIAL_LOG_SCALE = False  # signed fields can use symmetric log scale
+SPATIAL_LOG_SCALE = True  # signed fields can use symmetric log scale
 SPATIAL_VMIN = -1  # None -> symmetric auto range
 SPATIAL_VMAX = 1  # None -> symmetric auto range
 PRODUCT_VMIN = -1  # None -> symmetric auto range
 PRODUCT_VMAX = 1  # None -> symmetric auto range
-PRODUCT_LOG_SCALE = False  # signed fields can use symmetric log scale
+PRODUCT_LOG_SCALE = True  # signed fields can use symmetric log scale
 SPATIAL_THRESHOLD = 0.0001  # Values with |value| < threshold will be masked (not plotted)
 PRODUCT_THRESHOLD = 0.0001  # Values with |value| < threshold will be masked (not plotted)
 
@@ -57,13 +57,13 @@ CONC_VMAX = None
 # -------------------------------------------------------------------
 
 
-def _load_concentration_stack() -> np.ndarray:
+def _open_concentration_stack() -> np.memmap:
     if not CONCENTRATION_PATH.exists():
         raise FileNotFoundError(f"Concentration stack not found: {CONCENTRATION_PATH}")
     conc = np.load(CONCENTRATION_PATH, mmap_mode="r")
     if conc.ndim != 3:
         raise ValueError(f"Expected 3D concentration stack; got shape {conc.shape}")
-    return np.asarray(conc[X_SLICE, Y_SLICE, T_SLICE], dtype=float)
+    return conc
 
 
 def _compute_gradient_fields(conc: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -71,6 +71,116 @@ def _compute_gradient_fields(conc: np.ndarray) -> tuple[np.ndarray, np.ndarray, 
     dcdx = np.gradient(conc, DY, axis=1)
     dcdt = np.gradient(conc, DT, axis=2)
     return dcdx, dcdy, dcdt
+
+
+def _resolve_axis_slice(axis_slice: slice, axis_size: int) -> slice:
+    start, stop, step = axis_slice.indices(axis_size)
+    if step != 1:
+        raise ValueError("Only unit-step slices are supported for concentration gradients.")
+    return slice(start, stop)
+
+
+def _resolve_selected_slices(conc_stack: np.memmap) -> tuple[slice, slice, slice]:
+    x_slice = _resolve_axis_slice(X_SLICE, conc_stack.shape[0])
+    y_slice = _resolve_axis_slice(Y_SLICE, conc_stack.shape[1])
+    t_slice = _resolve_axis_slice(T_SLICE, conc_stack.shape[2])
+    if t_slice.stop <= t_slice.start:
+        raise ValueError("T_SLICE produced zero frames to process.")
+    return x_slice, y_slice, t_slice
+
+
+def _finalize_mean(sum_accum: np.ndarray, count_accum: np.ndarray) -> np.ndarray:
+    mean = sum_accum / np.where(count_accum == 0, np.nan, count_accum)
+    return mean.astype(np.float32)
+
+
+def _compute_gradient_means(
+    conc_stack: np.memmap,
+    *,
+    x_slice: slice,
+    y_slice: slice,
+    t_slice: slice,
+    chunk_size: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    nx = x_slice.stop - x_slice.start
+    ny = y_slice.stop - y_slice.start
+    dcdx_sum = np.zeros((nx, ny), dtype=np.float64)
+    dcdy_sum = np.zeros((nx, ny), dtype=np.float64)
+    dcdt_sum = np.zeros((nx, ny), dtype=np.float64)
+    dcdx_dcdt_sum = np.zeros((nx, ny), dtype=np.float64)
+    dcdy_dcdt_sum = np.zeros((nx, ny), dtype=np.float64)
+    dcdx_count = np.zeros((nx, ny), dtype=np.float64)
+    dcdy_count = np.zeros((nx, ny), dtype=np.float64)
+    dcdt_count = np.zeros((nx, ny), dtype=np.float64)
+    dcdx_dcdt_count = np.zeros((nx, ny), dtype=np.float64)
+    dcdy_dcdt_count = np.zeros((nx, ny), dtype=np.float64)
+
+    total_frames = t_slice.stop - t_slice.start
+    for idx, core_start in enumerate(range(t_slice.start, t_slice.stop, chunk_size), start=1):
+        core_stop = min(core_start + chunk_size, t_slice.stop)
+        halo_start = max(t_slice.start, core_start - 1)
+        halo_stop = min(t_slice.stop, core_stop + 1)
+        chunk = np.asarray(conc_stack[x_slice, y_slice, halo_start:halo_stop], dtype=np.float32)
+        dcdx_chunk, dcdy_chunk, dcdt_chunk = _compute_gradient_fields(chunk)
+
+        valid_start = core_start - halo_start
+        valid_stop = valid_start + (core_stop - core_start)
+        dcdx_valid = dcdx_chunk[:, :, valid_start:valid_stop]
+        dcdy_valid = dcdy_chunk[:, :, valid_start:valid_stop]
+        dcdt_valid = dcdt_chunk[:, :, valid_start:valid_stop]
+        dcdx_dcdt_valid = -dcdx_valid * dcdt_valid
+        dcdy_dcdt_valid = -dcdy_valid * dcdt_valid
+
+        dcdx_sum += np.nansum(dcdx_valid, axis=2)
+        dcdy_sum += np.nansum(dcdy_valid, axis=2)
+        dcdt_sum += np.nansum(dcdt_valid, axis=2)
+        dcdx_dcdt_sum += np.nansum(dcdx_dcdt_valid, axis=2)
+        dcdy_dcdt_sum += np.nansum(dcdy_dcdt_valid, axis=2)
+
+        dcdx_count += np.sum(np.isfinite(dcdx_valid), axis=2)
+        dcdy_count += np.sum(np.isfinite(dcdy_valid), axis=2)
+        dcdt_count += np.sum(np.isfinite(dcdt_valid), axis=2)
+        dcdx_dcdt_count += np.sum(np.isfinite(dcdx_dcdt_valid), axis=2)
+        dcdy_dcdt_count += np.sum(np.isfinite(dcdy_dcdt_valid), axis=2)
+
+        processed = core_stop - t_slice.start
+        print(
+            f"Processed {processed}/{total_frames} frames "
+            f"for mean gradients (chunk {idx}, t={core_start}:{core_stop})."
+        )
+
+    return (
+        _finalize_mean(dcdx_sum, dcdx_count),
+        _finalize_mean(dcdy_sum, dcdy_count),
+        _finalize_mean(dcdt_sum, dcdt_count),
+        _finalize_mean(dcdx_dcdt_sum, dcdx_dcdt_count),
+        _finalize_mean(dcdy_dcdt_sum, dcdy_dcdt_count),
+    )
+
+
+def _load_qc_frame_with_gradients(
+    conc_stack: np.memmap,
+    *,
+    frame_idx: int,
+    x_slice: slice,
+    y_slice: slice,
+    t_slice: slice,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    abs_frame = t_slice.start + frame_idx
+    if abs_frame < t_slice.start or abs_frame >= t_slice.stop:
+        raise IndexError(f"QC frame {frame_idx} is out of range for selected frames.")
+
+    halo_start = max(t_slice.start, abs_frame - 1)
+    halo_stop = min(t_slice.stop, abs_frame + 2)
+    chunk = np.asarray(conc_stack[x_slice, y_slice, halo_start:halo_stop], dtype=np.float32)
+    dcdx_chunk, dcdy_chunk, dcdt_chunk = _compute_gradient_fields(chunk)
+    local_idx = abs_frame - halo_start
+    return (
+        chunk[:, :, local_idx],
+        dcdx_chunk[:, :, local_idx],
+        dcdy_chunk[:, :, local_idx],
+        dcdt_chunk[:, :, local_idx],
+    )
 
 
 def _plot_field(
@@ -136,17 +246,25 @@ def _zscore_array(field: np.ndarray) -> np.ndarray:
 
 
 def main() -> None:
-    conc = _load_concentration_stack()
-    dcdx, dcdy, dcdt = _compute_gradient_fields(conc)
+    conc_stack = _open_concentration_stack()
+    x_slice, y_slice, t_slice = _resolve_selected_slices(conc_stack)
+    n_frames = t_slice.stop - t_slice.start
 
-
-    # QC plots for a single frame
+    # QC plots for selected frames without loading the full stack.
     for QC_FRAME in QC_FRAMES:
-        if QC_FRAME >= conc.shape[2]:
+        if QC_FRAME >= n_frames:
             break
+        conc_frame, dcdx_frame, dcdy_frame, dcdt_frame = _load_qc_frame_with_gradients(
+            conc_stack,
+            frame_idx=QC_FRAME,
+            x_slice=x_slice,
+            y_slice=y_slice,
+            t_slice=t_slice,
+        )
+
         # Plot concentration frame
         _plot_field(
-            conc[:, :, QC_FRAME],
+            conc_frame,
             title=f"Concentration frame {QC_FRAME}\ncase={CASE_NAME}",
             cbar_label="Concentration",
             fig_path=OUT_DIR / f"QC_frames/concentration_frame_{QC_FRAME}_{CASE_NAME}.png",
@@ -158,7 +276,7 @@ def main() -> None:
 
         # Plot dc/dx frame
         _plot_field(
-            dcdx[:, :, QC_FRAME],
+            dcdx_frame,
             title=f"dc/dx frame {QC_FRAME}\ncase={CASE_NAME}",
             cbar_label="dc/dx",
             fig_path=OUT_DIR / f"QC_frames/dcdx_frame_{QC_FRAME}_{CASE_NAME}.png",
@@ -170,7 +288,7 @@ def main() -> None:
 
         # Plot dc/dy frame
         _plot_field(
-            dcdy[:, :, QC_FRAME],
+            dcdy_frame,
             title=f"dc/dy frame {QC_FRAME}\ncase={CASE_NAME}",
             cbar_label="dc/dy",
             fig_path=OUT_DIR / f"QC_frames/dcdy_frame_{QC_FRAME}_{CASE_NAME}.png",
@@ -182,7 +300,7 @@ def main() -> None:
         
         # Plot dc/dt frame
         _plot_field(
-            dcdt[:, :, QC_FRAME],
+            dcdt_frame,
             title=f"dc/dt frame {QC_FRAME}\ncase={CASE_NAME}",
             cbar_label="dc/dt",
             fig_path=OUT_DIR / f"QC_frames/dcdt_frame_{QC_FRAME}_{CASE_NAME}.png",
@@ -192,13 +310,25 @@ def main() -> None:
             log_scale=SPATIAL_LOG_SCALE,
         )
 
-    dcdx_mean = np.nanmean(dcdx, axis=2)
-    dcdy_mean = np.nanmean(dcdy, axis=2)
-    dcdt_mean = np.nanmean(dcdt, axis=2)
-    corr_term = -dcdx * dcdt
-    print(f"corr_term shape: {corr_term.shape}")
-    dcdx_dcdt_mean = np.nanmean(corr_term, axis=2)
-    dcdy_dcdt_mean = np.nanmean(dcdy * dcdt, axis=2)
+        # Plot dc/dx*dc/dt frame
+        _plot_field(
+            -dcdx_frame*dcdt_frame,
+            title=f"dc/dx*dc/dt frame {QC_FRAME}\ncase={CASE_NAME}",
+            cbar_label="dc/dx*dc/dt",
+            fig_path=OUT_DIR / f"QC_frames/dcdx_times_dcdt_frame_{QC_FRAME}_{CASE_NAME}.png",
+            cmap=SPATIAL_CMAP,
+            vmin=1,
+            vmax=-1,
+            log_scale=SPATIAL_LOG_SCALE,
+        )
+
+    dcdx_mean, dcdy_mean, dcdt_mean, dcdx_dcdt_mean, dcdy_dcdt_mean = _compute_gradient_means(
+        conc_stack,
+        x_slice=x_slice,
+        y_slice=y_slice,
+        t_slice=t_slice,
+        chunk_size=CHUNK_SIZE,
+    )
 
     if Z_SCORE:
         dcdx_mean = _zscore_array(dcdx_mean)
