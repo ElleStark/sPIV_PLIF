@@ -17,14 +17,14 @@ from matplotlib.colors import SymLogNorm
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "nearbed"
+CASE_NAME = "baseline"
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"plif_{CASE_NAME}_smoothed.npy"
 OUT_DIR = BASE_PATH / "Plots" / "concentration_gradients"
 
 X_SLICE = slice(0, 601)
 Y_SLICE = slice(100, 500)
-T_SLICE = slice(0,500)  # e.g., slice(0, 2000)
+T_SLICE = slice(0,6000)  # e.g., slice(0, 2000)
 CHUNK_SIZE = 200  # number of frames to process at once when computing means
 
 # Grid/time spacing used in gradient computations
@@ -40,14 +40,14 @@ FIG_DPI = 600
 # Plot controls
 SPATIAL_CMAP = "RdBu_r"
 PRODUCT_CMAP = "RdBu_r"
-SPATIAL_LOG_SCALE = False  # signed fields can use symmetric log scale
-SPATIAL_VMIN = -1  # None -> symmetric auto range
-SPATIAL_VMAX = 1  # None -> symmetric auto range
-PRODUCT_VMIN = -1  # None -> symmetric auto range
-PRODUCT_VMAX = 1  # None -> symmetric auto range
-PRODUCT_LOG_SCALE = False  # signed fields can use symmetric log scale
-SPATIAL_THRESHOLD = 0.0001  # Values with |value| < threshold will be masked (not plotted)
-PRODUCT_THRESHOLD = 0.0001  # Values with |value| < threshold will be masked (not plotted)
+SPATIAL_LOG_SCALE = True  # signed fields can use symmetric log scale
+SPATIAL_VMIN = -.01  # None -> symmetric auto range
+SPATIAL_VMAX = 0.01  # None -> symmetric auto range
+PRODUCT_VMIN = -.01  # None -> symmetric auto range
+PRODUCT_VMAX = 0.01  # None -> symmetric auto range
+PRODUCT_LOG_SCALE = True  # signed fields can use symmetric log scale
+SPATIAL_THRESHOLD = 0.0000001  # Values with |value| < threshold will be masked (not plotted)
+PRODUCT_THRESHOLD = 0.0000001  # Values with |value| < threshold will be masked (not plotted)
 
 # QC plot settings
 QC_FRAMES = [0, 100, 200, 500, 1000, 2000, 3000, 4000, 5000, 6000]  # Frame index for QC plots
@@ -102,16 +102,17 @@ def _compute_HR_correlator(    conc_stack: np.memmap,
     chunk_size: int,) -> np.ndarray:
 
     nx = x_slice.stop - x_slice.start
-    ny = y_slice.stop - y_slice.start    
+    ny = y_slice.stop - y_slice.start -1  # one less in y due to shift   
     hrCorr_sum = np.zeros((nx, ny), dtype=np.float64)
     hrCorr_count = np.zeros((nx, ny), dtype=np.float64)
 
     total_frames = t_slice.stop - t_slice.start
     for idx, core_start in enumerate(range(t_slice.start, t_slice.stop, chunk_size), start=1):
         core_stop = min(core_start + chunk_size, t_slice.stop)
-        halo_start = max(t_slice.start, core_start - 1)
+        halo_start = max(t_slice.start+1, core_start - 1)
         halo_stop = min(t_slice.stop, core_stop + 1)
         chunk = np.asarray(conc_stack[x_slice, y_slice, halo_start:halo_stop], dtype=np.float32) 
+        print(f"Loaded chunk {idx} for HR correlator: t={halo_start}:{halo_stop} (core: {core_start}:{core_stop})")
 
         # HR correlator computation
         # use second dimension (y, cross-stream direction) for spatial shifts and third dimension (time) for temporal shifts
@@ -120,9 +121,10 @@ def _compute_HR_correlator(    conc_stack: np.memmap,
         hr_term2 = chunk[:, shift:, :-shift] * chunk[:, :-shift, shift:]  # c(x,y+1,t-1)*c(x,y,t)
         hrCorr_chunk = hr_term1 - hr_term2  # HR correlator: c(x,y+1,t)*c(x,y,t-1) - c(x,y+1,t)*c(x,y+1,t)
 
-        valid_start = core_start - halo_start
+        valid_start = core_start 
         valid_stop = valid_start + (core_stop - core_start)
         hrCorr_valid = hrCorr_chunk[:, :, valid_start:valid_stop]
+        print(f"Computed HR correlator for chunk {idx}: dims {hrCorr_valid.shape}")
         hrCorr_sum += np.nansum(hrCorr_valid, axis=2)
         hrCorr_count += np.sum(np.isfinite(hrCorr_valid), axis=2)
 
@@ -363,8 +365,15 @@ def main() -> None:
         # )
 
         # Plot Hassentstein Reichardt correlator frame
+        # use second dimension (y, cross-stream direction) for spatial shifts and third dimension (time) for temporal shifts
+        shift = 1
+        chunk = np.asarray(conc_stack[:, :, QC_FRAME:QC_FRAME+2], dtype=np.float32)  # shape (nx, ny, 1)
+        hr_term1 = chunk[:, shift:, shift:] * chunk[:, :-shift, :-shift]  # c(x,y+1,t)*c(x,y,t-1)
+        hr_term2 = chunk[:, shift:, :-shift] * chunk[:, :-shift, shift:]  # c(x,y+1,t-1)*c(x,y,t)
+        hrCorr_frame = np.squeeze(hr_term1 - hr_term2)  # HR correlator: c(x,y+1,t)*c(x,y,t-1) - c(x,y+1,t)*c(x,y+1,t)
+
         _plot_field(
-            -dcdx_frame*dcdt_frame,
+            hrCorr_frame,
             title=f"HR correlator frame {QC_FRAME}\ncase={CASE_NAME}",
             cbar_label="odor velocity (mm/s)",
             fig_path=OUT_DIR / f"QC_frames/HRcorrelator_frame_{QC_FRAME}_{CASE_NAME}.png",
@@ -382,11 +391,19 @@ def main() -> None:
         chunk_size=CHUNK_SIZE,
     )
 
-    if Z_SCORE:
-        dcdx_mean = _zscore_array(dcdx_mean)
-        dcdy_mean = _zscore_array(dcdy_mean)
-        dcdx_dcdt_mean = _zscore_array(dcdx_dcdt_mean)
-        dcdy_dcdt_mean = _zscore_array(dcdy_dcdt_mean)
+    hrCorr_mean = _compute_HR_correlator(
+        conc_stack,
+        x_slice=x_slice,
+        y_slice=y_slice,
+        t_slice=t_slice,
+        chunk_size=CHUNK_SIZE,
+    )
+
+    # if Z_SCORE:
+    #     dcdx_mean = _zscore_array(dcdx_mean)
+    #     dcdy_mean = _zscore_array(dcdy_mean)
+    #     dcdx_dcdt_mean = _zscore_array(dcdx_dcdt_mean)
+    #     dcdy_dcdt_mean = _zscore_array(dcdy_dcdt_mean)
         
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -394,6 +411,7 @@ def main() -> None:
     np.save(OUT_DIR / f"dcdy_mean_{CASE_NAME}.npy", dcdy_mean)
     np.save(OUT_DIR / f"dcdx_times_dcdt_mean_{CASE_NAME}.npy", dcdx_dcdt_mean)
     np.save(OUT_DIR / f"dcdy_times_dcdt_mean_{CASE_NAME}.npy", dcdy_dcdt_mean)
+    np.save(OUT_DIR / f"hrCorr_mean_{CASE_NAME}.npy", hrCorr_mean)
 
     spatial_vmin = SPATIAL_VMIN
     spatial_vmax = SPATIAL_VMAX
@@ -404,72 +422,84 @@ def main() -> None:
         spatial_vmin = -lim
         spatial_vmax = lim
 
+    # _plot_field(
+    #     dcdx_mean,
+    #     title=f"Time-averaged signed spatial gradient <dc/dx>_t\ncase={CASE_NAME}",
+    #     cbar_label="<dc/dx>_t",
+    #     fig_path=OUT_DIR / f"dcdx_mean_{CASE_NAME}.png",
+    #     cmap=SPATIAL_CMAP,
+    #     vmin=spatial_vmin,
+    #     vmax=spatial_vmax,
+    #     log_scale=SPATIAL_LOG_SCALE,
+    #     threshold=SPATIAL_THRESHOLD,
+    # )
+
+    # _plot_field(
+    #     dcdy_mean,
+    #     title=f"Time-averaged signed spatial gradient <dc/dy>_t\ncase={CASE_NAME}",
+    #     cbar_label="<dc/dy>_t",
+    #     fig_path=OUT_DIR / f"dcdy_mean_{CASE_NAME}.png",
+    #     cmap=SPATIAL_CMAP,
+    #     vmin=spatial_vmin,
+    #     vmax=spatial_vmax,
+    #     log_scale=SPATIAL_LOG_SCALE,
+    #     threshold=SPATIAL_THRESHOLD,
+    # )
+
+    # _plot_field(
+    #     dcdt_mean,
+    #     title=f"Time-averaged signed spatial gradient <dc/dt>_t\ncase={CASE_NAME}",
+    #     cbar_label="<dc/dt>_t",
+    #     fig_path=OUT_DIR / f"dcdt_mean_{CASE_NAME}.png",
+    #     cmap=SPATIAL_CMAP,
+    #     vmin=spatial_vmin,
+    #     vmax=spatial_vmax,
+    #     log_scale=SPATIAL_LOG_SCALE,
+    #     threshold=SPATIAL_THRESHOLD,
+    # )
+
+
+    # prod_vmin = PRODUCT_VMIN
+    # prod_vmax = PRODUCT_VMAX
+    # if prod_vmin is None or prod_vmax is None:
+    #     merged = np.concatenate([dcdx_dcdt_mean.ravel(), dcdy_dcdt_mean.ravel()])
+    #     lim = float(np.nanmax(np.abs(merged))) if np.any(np.isfinite(merged)) else 1.0
+    #     lim = max(lim, 1e-12)
+    #     prod_vmin = -lim
+    #     prod_vmax = lim
+
+    # _plot_field(
+    #     dcdx_dcdt_mean,
+    #     title=f"Time-averaged signed product <(dc/dx)*(dc/dt)>_t\ncase={CASE_NAME}",
+    #     cbar_label="<(dc/dx)*(dc/dt)>_t",
+    #     fig_path=OUT_DIR / f"dcdx_times_dcdt_mean_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
+    #     cmap=PRODUCT_CMAP,
+    #     vmin=prod_vmin,
+    #     vmax=prod_vmax,
+    #     log_scale=PRODUCT_LOG_SCALE,
+    # )
+
+    # _plot_field(
+    #     dcdy_dcdt_mean,
+    #     title=f"Time-averaged signed product <(dc/dy)*(dc/dt)>_t\ncase={CASE_NAME}",
+    #     cbar_label="<(dc/dy)*(dc/dt)>_t",
+    #     fig_path=OUT_DIR / f"dcdy_times_dcdt_mean_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
+    #     cmap=PRODUCT_CMAP,
+    #     vmin=prod_vmin,
+    #     vmax=prod_vmax,
+    #     log_scale=PRODUCT_LOG_SCALE,
+    # )
+
     _plot_field(
-        dcdx_mean,
-        title=f"Time-averaged signed spatial gradient <dc/dx>_t\ncase={CASE_NAME}",
-        cbar_label="<dc/dx>_t",
-        fig_path=OUT_DIR / f"dcdx_mean_{CASE_NAME}.png",
+        hrCorr_mean,
+        title=f"Time-averaged HR correlator\ncase={CASE_NAME}",
+        cbar_label="HR correlator (mm^2/s)",
+        fig_path=OUT_DIR / f"hrCorr_mean_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
         cmap=SPATIAL_CMAP,
-        vmin=spatial_vmin,
-        vmax=spatial_vmax,
+        vmin=SPATIAL_VMIN,
+        vmax=SPATIAL_VMAX,
         log_scale=SPATIAL_LOG_SCALE,
         threshold=SPATIAL_THRESHOLD,
-    )
-
-    _plot_field(
-        dcdy_mean,
-        title=f"Time-averaged signed spatial gradient <dc/dy>_t\ncase={CASE_NAME}",
-        cbar_label="<dc/dy>_t",
-        fig_path=OUT_DIR / f"dcdy_mean_{CASE_NAME}.png",
-        cmap=SPATIAL_CMAP,
-        vmin=spatial_vmin,
-        vmax=spatial_vmax,
-        log_scale=SPATIAL_LOG_SCALE,
-        threshold=SPATIAL_THRESHOLD,
-    )
-
-    _plot_field(
-        dcdt_mean,
-        title=f"Time-averaged signed spatial gradient <dc/dt>_t\ncase={CASE_NAME}",
-        cbar_label="<dc/dt>_t",
-        fig_path=OUT_DIR / f"dcdt_mean_{CASE_NAME}.png",
-        cmap=SPATIAL_CMAP,
-        vmin=spatial_vmin,
-        vmax=spatial_vmax,
-        log_scale=SPATIAL_LOG_SCALE,
-        threshold=SPATIAL_THRESHOLD,
-    )
-
-
-    prod_vmin = PRODUCT_VMIN
-    prod_vmax = PRODUCT_VMAX
-    if prod_vmin is None or prod_vmax is None:
-        merged = np.concatenate([dcdx_dcdt_mean.ravel(), dcdy_dcdt_mean.ravel()])
-        lim = float(np.nanmax(np.abs(merged))) if np.any(np.isfinite(merged)) else 1.0
-        lim = max(lim, 1e-12)
-        prod_vmin = -lim
-        prod_vmax = lim
-
-    _plot_field(
-        dcdx_dcdt_mean,
-        title=f"Time-averaged signed product <(dc/dx)*(dc/dt)>_t\ncase={CASE_NAME}",
-        cbar_label="<(dc/dx)*(dc/dt)>_t",
-        fig_path=OUT_DIR / f"dcdx_times_dcdt_mean_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
-        cmap=PRODUCT_CMAP,
-        vmin=prod_vmin,
-        vmax=prod_vmax,
-        log_scale=PRODUCT_LOG_SCALE,
-    )
-
-    _plot_field(
-        dcdy_dcdt_mean,
-        title=f"Time-averaged signed product <(dc/dy)*(dc/dt)>_t\ncase={CASE_NAME}",
-        cbar_label="<(dc/dy)*(dc/dt)>_t",
-        fig_path=OUT_DIR / f"dcdy_times_dcdt_mean_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
-        cmap=PRODUCT_CMAP,
-        vmin=prod_vmin,
-        vmax=prod_vmax,
-        log_scale=PRODUCT_LOG_SCALE,
     )
 
     print(f"Saved outputs to {OUT_DIR}")
