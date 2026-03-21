@@ -41,7 +41,7 @@ FLX_DIR = BASE_PATH / "flow_properties" / "flx_u_v_w"
 X_SLICE = slice(0, 600)
 CONC_Y_SLICE = slice(100, 500)  # apply to concentration to align with velocity trim
 VEL_Y_SLICE = slice(None)  # velocity fluctuations already trimmed in y; keep all
-T_SLICE = slice(0, 6000)
+T_SLICE = slice(0, 1)
 QUIVER_STEP = 15  # subsample for quiver display
 OUT_DIR = BASE_PATH / "flow_properties" / "scalar_fluxes"
 MEAN_X_SLICE = X_SLICE
@@ -53,6 +53,7 @@ TURB_QUIVER_MAG_THRESHOLD = 0.00005  # turbulent flux quiver threshold
 ADV_QUIVER_MAG_THRESHOLD = 0.001  # advective flux quiver threshold
 TOTAL_QUIVER_MAG_THRESHOLD = 0.0012 # total flux quiver threshold
 QUIVER_LENGTH = 16.0  # constant arrow length in axis units
+SHOW_QUIVER = False  # set False for colormap-only flux plots
 SHOW_TURB_MAG_OVERLAY = True  # show |<c'v'>,<c'u'>| background for turbulent fluxes
 #MAG_VMIN = 0.0001     # magnitude color lower bound; None auto-scales
 MAG_VMIN = -0.005
@@ -63,10 +64,10 @@ ADV_MAG_VMIN = -0.1
 ADV_MAG_VMAX = 0.1  # set None to auto-scale for advective magnitude
 DIFFUSIVE_FILL_NANS = True  # fill NaNs via nearest-neighbor interpolation for diffusive case
 FIG_DPI = 600
-COMPUTE_FLUXES = False  # set to False to skip computation and only plot existing data
+COMPUTE_FLUXES = True  # set to False to skip computation and only plot existing data
 PLOT_TURBULENT = False  # plot turbulent scalar fluxes c'u', c'v', c'w'
 PLOT_ADVECTIVE = False  # plot mean-velocity * mean-concentration fluxes
-SAVE_ADVECTIVE = True  # save advective flux arrays to disk
+SAVE_ADVECTIVE = False  # save advective flux arrays to disk
 PLOT_TOTAL = True  # plot total fluxes <u c>, <v c>, <w c>
 SAVE_TOTAL = False  # save total flux arrays to disk
 SHOW_TOTAL_MAG_OVERLAY = True  # show |<v c>, <u c>| background for total fluxes
@@ -77,7 +78,7 @@ TOTAL_COMPONENT_CMAP = "RdBu_r"
 TOTAL_COMPONENT_VMIN = None  # fallback only when per-component limits are not passed
 TOTAL_COMPONENT_VMAX = None  # fallback only when per-component limits are not passed
 TOTAL_COMPONENT_QUIVER_THRESHOLD = 0.0012  # fallback only when per-component threshold is not passed
-TOTAL_COMPONENT_LOG_SCALE = True  # use signed-log color scaling for component overlays
+TOTAL_COMPONENT_LOG_SCALE = False  # use signed-log color scaling for component overlays
 TOTAL_COMPONENT_LOG_LINTHRESH = None  # None -> auto from quiver threshold
 # -------------------------------------------------------------------
 
@@ -143,22 +144,23 @@ def _plot_flux_quiver(
             shading="auto",
             norm=LogNorm(vmin=mag_vmin, vmax=mag_vmax),
         )
-    quiv = ax.quiver(
-        Xg_q,
-        Yg_q,
-        uc_draw,
-        vc_draw,
-        angles="xy",
-        scale_units="xy",
-        scale=1.0,
-        color="black",
-        alpha=0.8,
-        linewidth=0.3,
-        width=0.006,
-        headwidth=3,
-        headlength=4,
-        headaxislength=3,
-    )
+    if SHOW_QUIVER:
+        ax.quiver(
+            Xg_q,
+            Yg_q,
+            uc_draw,
+            vc_draw,
+            angles="xy",
+            scale_units="xy",
+            scale=1.0,
+            color="black",
+            alpha=0.8,
+            linewidth=0.3,
+            width=0.006,
+            headwidth=3,
+            headlength=4,
+            headaxislength=3,
+        )
     ax.set_xlabel(XLABEL)
     ax.set_ylabel(YLABEL)
     ax.set_title(title)
@@ -242,22 +244,23 @@ def _plot_component_flux_vector_overlay(
             else TwoSlopeNorm(vmin=value_vmin, vcenter=0.0, vmax=value_vmax)
         ),
     )
-    ax.quiver(
-        Xg[::step, ::step],
-        Yg[::step, ::step],
-        uq,
-        vq,
-        angles="xy",
-        scale_units="xy",
-        scale=1.0,
-        color="black",
-        alpha=0.8,
-        linewidth=0.3,
-        width=0.006,
-        headwidth=3,
-        headlength=4,
-        headaxislength=3,
-    )
+    if SHOW_QUIVER:
+        ax.quiver(
+            Xg[::step, ::step],
+            Yg[::step, ::step],
+            uq,
+            vq,
+            angles="xy",
+            scale_units="xy",
+            scale=1.0,
+            color="black",
+            alpha=0.8,
+            linewidth=0.3,
+            width=0.006,
+            headwidth=3,
+            headlength=4,
+            headaxislength=3,
+        )
     ax.set_xlabel(XLABEL)
     ax.set_ylabel(YLABEL)
     ax.set_title(title)

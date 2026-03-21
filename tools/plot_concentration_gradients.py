@@ -17,21 +17,21 @@ from matplotlib.colors import SymLogNorm
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "baseline"
+CASE_NAME = "nearbed"
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"plif_{CASE_NAME}_smoothed.npy"
 OUT_DIR = BASE_PATH / "Plots" / "concentration_gradients"
 
 X_SLICE = slice(0, 601)
 Y_SLICE = slice(100, 500)
-T_SLICE = slice(0,6000)  # e.g., slice(0, 2000)
+T_SLICE = slice(0,500)  # e.g., slice(0, 2000)
 CHUNK_SIZE = 200  # number of frames to process at once when computing means
 
 # Grid/time spacing used in gradient computations
 DX = 0.5
 DY = 0.5
-DT = 0.5
-Z_SCORE = False  # Whether to z-score the fields 
+DT = 0.05
+Z_SCORE = True  # Whether to z-score the fields 
 
 XLABEL = "x index"
 YLABEL = "y index"
@@ -40,12 +40,12 @@ FIG_DPI = 600
 # Plot controls
 SPATIAL_CMAP = "RdBu_r"
 PRODUCT_CMAP = "RdBu_r"
-SPATIAL_LOG_SCALE = True  # signed fields can use symmetric log scale
+SPATIAL_LOG_SCALE = False  # signed fields can use symmetric log scale
 SPATIAL_VMIN = -1  # None -> symmetric auto range
 SPATIAL_VMAX = 1  # None -> symmetric auto range
 PRODUCT_VMIN = -1  # None -> symmetric auto range
 PRODUCT_VMAX = 1  # None -> symmetric auto range
-PRODUCT_LOG_SCALE = True  # signed fields can use symmetric log scale
+PRODUCT_LOG_SCALE = False  # signed fields can use symmetric log scale
 SPATIAL_THRESHOLD = 0.0001  # Values with |value| < threshold will be masked (not plotted)
 PRODUCT_THRESHOLD = 0.0001  # Values with |value| < threshold will be masked (not plotted)
 
@@ -93,6 +93,46 @@ def _finalize_mean(sum_accum: np.ndarray, count_accum: np.ndarray) -> np.ndarray
     mean = sum_accum / np.where(count_accum == 0, np.nan, count_accum)
     return mean.astype(np.float32)
 
+
+def _compute_HR_correlator(    conc_stack: np.memmap,
+    *,
+    x_slice: slice,
+    y_slice: slice,
+    t_slice: slice,
+    chunk_size: int,) -> np.ndarray:
+
+    nx = x_slice.stop - x_slice.start
+    ny = y_slice.stop - y_slice.start    
+    hrCorr_sum = np.zeros((nx, ny), dtype=np.float64)
+    hrCorr_count = np.zeros((nx, ny), dtype=np.float64)
+
+    total_frames = t_slice.stop - t_slice.start
+    for idx, core_start in enumerate(range(t_slice.start, t_slice.stop, chunk_size), start=1):
+        core_stop = min(core_start + chunk_size, t_slice.stop)
+        halo_start = max(t_slice.start, core_start - 1)
+        halo_stop = min(t_slice.stop, core_stop + 1)
+        chunk = np.asarray(conc_stack[x_slice, y_slice, halo_start:halo_stop], dtype=np.float32) 
+
+        # HR correlator computation
+        # use second dimension (y, cross-stream direction) for spatial shifts and third dimension (time) for temporal shifts
+        shift = 1
+        hr_term1 = chunk[:, shift:, shift:] * chunk[:, :-shift, :-shift]  # c(x,y+1,t)*c(x,y,t-1)
+        hr_term2 = chunk[:, shift:, :-shift] * chunk[:, :-shift, shift:]  # c(x,y+1,t-1)*c(x,y,t)
+        hrCorr_chunk = hr_term1 - hr_term2  # HR correlator: c(x,y+1,t)*c(x,y,t-1) - c(x,y+1,t)*c(x,y+1,t)
+
+        valid_start = core_start - halo_start
+        valid_stop = valid_start + (core_stop - core_start)
+        hrCorr_valid = hrCorr_chunk[:, :, valid_start:valid_stop]
+        hrCorr_sum += np.nansum(hrCorr_valid, axis=2)
+        hrCorr_count += np.sum(np.isfinite(hrCorr_valid), axis=2)
+
+        processed = core_stop - t_slice.start
+        print(
+            f"Processed {processed}/{total_frames} frames "
+            f"for HR correlator (chunk {idx}, t={core_start}:{core_stop})."
+        )   
+
+    return _finalize_mean(hrCorr_sum, hrCorr_count)
 
 def _compute_gradient_means(
     conc_stack: np.memmap,
@@ -262,63 +302,75 @@ def main() -> None:
             t_slice=t_slice,
         )
 
-        # Plot concentration frame
-        _plot_field(
-            conc_frame,
-            title=f"Concentration frame {QC_FRAME}\ncase={CASE_NAME}",
-            cbar_label="Concentration",
-            fig_path=OUT_DIR / f"QC_frames/concentration_frame_{QC_FRAME}_{CASE_NAME}.png",
-            cmap=CONC_CMAP,
-            vmin=CONC_VMIN,
-            vmax=CONC_VMAX,
-            log_scale=False,
-        )
+        # # Plot concentration frame
+        # _plot_field(
+        #     conc_frame,
+        #     title=f"Concentration frame {QC_FRAME}\ncase={CASE_NAME}",
+        #     cbar_label="Concentration",
+        #     fig_path=OUT_DIR / f"QC_frames/concentration_frame_{QC_FRAME}_{CASE_NAME}.png",
+        #     cmap=CONC_CMAP,
+        #     vmin=CONC_VMIN,
+        #     vmax=CONC_VMAX,
+        #     log_scale=False,
+        # )
 
-        # Plot dc/dx frame
-        _plot_field(
-            dcdx_frame,
-            title=f"dc/dx frame {QC_FRAME}\ncase={CASE_NAME}",
-            cbar_label="dc/dx",
-            fig_path=OUT_DIR / f"QC_frames/dcdx_frame_{QC_FRAME}_{CASE_NAME}.png",
-            cmap=SPATIAL_CMAP,
-            vmin=SPATIAL_VMIN,
-            vmax=SPATIAL_VMAX,
-            log_scale=SPATIAL_LOG_SCALE,
-        )
+        # # Plot dc/dx frame
+        # _plot_field(
+        #     dcdx_frame,
+        #     title=f"dc/dx frame {QC_FRAME}\ncase={CASE_NAME}",
+        #     cbar_label="dc/dx",
+        #     fig_path=OUT_DIR / f"QC_frames/dcdx_frame_{QC_FRAME}_{CASE_NAME}.png",
+        #     cmap=SPATIAL_CMAP,
+        #     vmin=SPATIAL_VMIN,
+        #     vmax=SPATIAL_VMAX,
+        #     log_scale=SPATIAL_LOG_SCALE,
+        # )
 
-        # Plot dc/dy frame
-        _plot_field(
-            dcdy_frame,
-            title=f"dc/dy frame {QC_FRAME}\ncase={CASE_NAME}",
-            cbar_label="dc/dy",
-            fig_path=OUT_DIR / f"QC_frames/dcdy_frame_{QC_FRAME}_{CASE_NAME}.png",
-            cmap=SPATIAL_CMAP,
-            vmin=SPATIAL_VMIN,
-            vmax=SPATIAL_VMAX,
-            log_scale=SPATIAL_LOG_SCALE,
-        )
+        # # Plot dc/dy frame
+        # _plot_field(
+        #     dcdy_frame,
+        #     title=f"dc/dy frame {QC_FRAME}\ncase={CASE_NAME}",
+        #     cbar_label="dc/dy",
+        #     fig_path=OUT_DIR / f"QC_frames/dcdy_frame_{QC_FRAME}_{CASE_NAME}.png",
+        #     cmap=SPATIAL_CMAP,
+        #     vmin=SPATIAL_VMIN,
+        #     vmax=SPATIAL_VMAX,
+        #     log_scale=SPATIAL_LOG_SCALE,
+        # )
         
-        # Plot dc/dt frame
-        _plot_field(
-            dcdt_frame,
-            title=f"dc/dt frame {QC_FRAME}\ncase={CASE_NAME}",
-            cbar_label="dc/dt",
-            fig_path=OUT_DIR / f"QC_frames/dcdt_frame_{QC_FRAME}_{CASE_NAME}.png",
-            cmap=SPATIAL_CMAP,
-            vmin=1,
-            vmax=-1,
-            log_scale=SPATIAL_LOG_SCALE,
-        )
+        # # Plot dc/dt frame
+        # _plot_field(
+        #     dcdt_frame,
+        #     title=f"dc/dt frame {QC_FRAME}\ncase={CASE_NAME}",
+        #     cbar_label="dc/dt",
+        #     fig_path=OUT_DIR / f"QC_frames/dcdt_frame_{QC_FRAME}_{CASE_NAME}.png",
+        #     cmap=SPATIAL_CMAP,
+        #     vmin=SPATIAL_VMIN,
+        #     vmax=SPATIAL_VMAX,
+        #     log_scale=SPATIAL_LOG_SCALE,
+        # )
 
-        # Plot dc/dx*dc/dt frame
+        # # Plot dc/dx*dc/dt frame
+        # _plot_field(
+        #     -dcdx_frame*dcdt_frame,
+        #     title=f"dc/dx*dc/dt frame {QC_FRAME}\ncase={CASE_NAME}",
+        #     cbar_label="dc/dx*dc/dt",
+        #     fig_path=OUT_DIR / f"QC_frames/dcdx_times_dcdt_frame_{QC_FRAME}_{CASE_NAME}.png",
+        #     cmap=SPATIAL_CMAP,
+        #     vmin=SPATIAL_VMIN,
+        #     vmax=SPATIAL_VMAX,
+        #     log_scale=SPATIAL_LOG_SCALE,
+        # )
+
+        # Plot Hassentstein Reichardt correlator frame
         _plot_field(
             -dcdx_frame*dcdt_frame,
-            title=f"dc/dx*dc/dt frame {QC_FRAME}\ncase={CASE_NAME}",
-            cbar_label="dc/dx*dc/dt",
-            fig_path=OUT_DIR / f"QC_frames/dcdx_times_dcdt_frame_{QC_FRAME}_{CASE_NAME}.png",
+            title=f"HR correlator frame {QC_FRAME}\ncase={CASE_NAME}",
+            cbar_label="odor velocity (mm/s)",
+            fig_path=OUT_DIR / f"QC_frames/HRcorrelator_frame_{QC_FRAME}_{CASE_NAME}.png",
             cmap=SPATIAL_CMAP,
-            vmin=1,
-            vmax=-1,
+            vmin=SPATIAL_VMIN,
+            vmax=SPATIAL_VMAX,
             log_scale=SPATIAL_LOG_SCALE,
         )
 
