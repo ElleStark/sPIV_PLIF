@@ -17,7 +17,7 @@ from matplotlib.colors import SymLogNorm
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "baseline"
+CASE_NAME = "nearbed"
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"plif_{CASE_NAME}_smoothed.npy"
 OUT_DIR = BASE_PATH / "Plots" / "concentration_gradients"

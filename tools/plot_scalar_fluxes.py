@@ -32,7 +32,7 @@ from src.sPIV_PLIF_postprocessing.analysis.flow_properties import load_mean_velo
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "baseline" 
+CASE_NAME = "nearbed" 
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"plif_{CASE_NAME}_smoothed.npy"
 U_PATH = BASE_PATH / "PIV" / f"piv_{CASE_NAME}_u.npy"  # used only for total fluxes, not turbulent fluxes
@@ -41,7 +41,7 @@ FLX_DIR = BASE_PATH / "flow_properties" / "flx_u_v_w"
 X_SLICE = slice(0, 600)
 CONC_Y_SLICE = slice(100, 500)  # apply to concentration to align with velocity trim
 VEL_Y_SLICE = slice(None)  # velocity fluctuations already trimmed in y; keep all
-T_SLICE = slice(0, 1)
+T_SLICE = slice(0, 500)
 QUIVER_STEP = 15  # subsample for quiver display
 OUT_DIR = BASE_PATH / "flow_properties" / "scalar_fluxes"
 MEAN_X_SLICE = X_SLICE
@@ -53,7 +53,7 @@ TURB_QUIVER_MAG_THRESHOLD = 0.00005  # turbulent flux quiver threshold
 ADV_QUIVER_MAG_THRESHOLD = 0.001  # advective flux quiver threshold
 TOTAL_QUIVER_MAG_THRESHOLD = 0.0012 # total flux quiver threshold
 QUIVER_LENGTH = 16.0  # constant arrow length in axis units
-SHOW_QUIVER = False  # set False for colormap-only flux plots
+SHOW_QUIVER = True  # set False for colormap-only flux plots
 SHOW_TURB_MAG_OVERLAY = True  # show |<c'v'>,<c'u'>| background for turbulent fluxes
 #MAG_VMIN = 0.0001     # magnitude color lower bound; None auto-scales
 MAG_VMIN = -0.005
@@ -78,7 +78,7 @@ TOTAL_COMPONENT_CMAP = "RdBu_r"
 TOTAL_COMPONENT_VMIN = None  # fallback only when per-component limits are not passed
 TOTAL_COMPONENT_VMAX = None  # fallback only when per-component limits are not passed
 TOTAL_COMPONENT_QUIVER_THRESHOLD = 0.0012  # fallback only when per-component threshold is not passed
-TOTAL_COMPONENT_LOG_SCALE = False  # use signed-log color scaling for component overlays
+TOTAL_COMPONENT_LOG_SCALE = True  # use signed-log color scaling for component overlays
 TOTAL_COMPONENT_LOG_LINTHRESH = None  # None -> auto from quiver threshold
 # -------------------------------------------------------------------
 
