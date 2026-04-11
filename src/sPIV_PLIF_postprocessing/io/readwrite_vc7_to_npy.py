@@ -17,11 +17,13 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import RegularGridInterpolator
 
 # Target grid in millimeters
-TARGET_MIN_MM = -149.5
-TARGET_MAX_MM = 149.5
-TARGET_STEP_MM = 0.5
-TARGET_X = np.arange(TARGET_MIN_MM, TARGET_MAX_MM + TARGET_STEP_MM / 2, TARGET_STEP_MM)
-TARGET_Y = np.arange(TARGET_MIN_MM, TARGET_MAX_MM + TARGET_STEP_MM / 2, TARGET_STEP_MM)
+TARGET_MIN_MM_Y = -148.5
+TARGET_MAX_MM_Y = 148.5
+TARGET_MIN_MM_X = -145.0
+TARGET_MAX_MM_X = 145.0
+TARGET_STEP_MM = 0.75
+TARGET_X = np.arange(TARGET_MIN_MM_X, TARGET_MAX_MM_X + TARGET_STEP_MM / 2, TARGET_STEP_MM)
+TARGET_Y = np.arange(TARGET_MIN_MM_Y, TARGET_MAX_MM_Y + TARGET_STEP_MM / 2, TARGET_STEP_MM)
 
 logger = logging.getLogger(__name__)
 
@@ -378,14 +380,14 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     # Hard-coded paths: adjust to your dataset
-    save_dir = Path("E:/sPIV_PLIF_ProcessedData/PIV/")
-    save_name = "9.26.2025_30cms_DiffusiveSource_smTG15cm_neuHe0.876_air0.941_PIV0.02_iso_"
-    piv_dir = Path("D:/PIV_20Hz_data/")
-    piv_path1 = piv_dir / "9.26.2025_PIV_sourceconfig/9.26.2025_30cms_DiffusiveSource_smTG15cm_neuHe0.876_air0.941_PIV0.02_iso/Copy_L1/AddGeometricMask/StereoPIV_MPd(2x12x12_75%ov)/PostProc/AnisoSmooth_S=5_K21/DeleteMask/Resize/PostProc_interpolate.set"
-    piv_path2 = piv_dir / "9.26.2025_PIV_sourceconfig/9.26.2025_30cms_DiffusiveSource_smTG15cm_neuHe0.876_air0.941_PIV0.02_iso/Copy_L2/StereoPIV_MPd(2x12x12_75%ov)/Resize.set"
-    vec_grid = 3 # spacing of the vectors in pixels
+    save_dir = Path("I:/Processed_Data/PIV/")
+    save_name = "8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_"
+    piv_dir = Path("G:/PIV_20Hz_data/")
+    piv_path1 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L2/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_L2/SubOverTimeMin_sl=all/MinMax Intensity Normalization/StereoPIV_MPd(4x24x24_75%ov).set"
+    piv_path2 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L1/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso/CopySelected_L1/SubOverTimeMin_sl=all/MinMax Intensity Normalization/StereoPIV_MPd(4x24x24_75%ov).set"
+    vec_grid = 6 # spacing of the vectors in pixels
 
-    logger.info("Processing %s and %s onto target grid %s..%s mm", piv_path1, piv_path2, TARGET_MIN_MM, TARGET_MAX_MM)
+    logger.info("Processing %s and %s onto target x grid %s..%s mm", piv_path1, piv_path2, TARGET_MIN_MM_X, TARGET_MAX_MM_X)
     save_raw_qc_quiver(piv_path1, save_dir, save_name + 'A', frame_idx=0, stride=10)
     save_raw_qc_quiver(piv_path2, save_dir, save_name + 'B', frame_idx=0, stride=10)
     u_stack, v_stack, w_stack = collate_vectors_to_grid(piv_path1, piv_path2, vec_grid)

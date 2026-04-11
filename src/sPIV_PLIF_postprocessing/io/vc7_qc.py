@@ -12,36 +12,41 @@ except ImportError:
     from src.sPIV_PLIF_postprocessing.io.readwrite_vc7_to_npy import TARGET_X, TARGET_Y
 
 # paths to the u and v velocity fields
-u_path = Path('E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_u.npy')
-v_path = Path('E:/sPIV_PLIF_ProcessedData/PIV/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_v.npy')
+u_path = Path('I:/Processed_Data/PIV/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_u.npy')
+v_path = Path('I:/Processed_Data/PIV/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_v.npy')
+c_path = Path('I:/Processed_Data/PLIF/plif_baseline.npy')
 
-# v = np.load(v_path)
-# v = np.flipud(v)  # flip the v velocity field 
-# np.save(v_path, v)  # save the flipped v velocity field back to the same file
+print(f'u dimensions: {np.load(u_path).shape}')
+print(f'v dimensions: {np.load(v_path).shape}')
+print(f'c dimensions: {np.load(c_path).shape}')
 
-# plotting parameters
-frame_idx = 1
-out_path = Path('E:/sPIV_PLIF_ProcessedData/PIV/Baseline/quiver_frame_' + str(frame_idx) + '.png')
-vecstride_x = 8  # optional, arrow spacing
-vecstride_y = 15  # optional, arrow spacing
-scale = 0.04  # optional, scaling of arrow length
-headwidth = 5  # optional, width of the arrow head
-headlength = 5  # optional, length of the arrow head
-tailwidth = 0.001  # optional, width of the arrow tail
-x_coords = TARGET_X  # optional, x coordinates of the velocity field
-y_coords = TARGET_Y  # optional, y coordinates of the velocity field
+# # v = np.load(v_path)
+# # v = np.flipud(v)  # flip the v velocity field 
+# # np.save(v_path, v)  # save the flipped v velocity field back to the same file
 
-quiver_from_npy(
-    u_path,
-    v_path,
-    out_path,
-    frame_idx=frame_idx,
-    stride_x=vecstride_x,
-    stride_y=vecstride_y,
-    scale=scale,
-    headwidth=headwidth,
-    headlength=headlength,
-    tail_width=tailwidth,
-    x_coords=x_coords,
-    y_coords=y_coords,
-)
+# # plotting parameters
+# frame_idx = 2
+# out_path = Path('I:/Processed_Data/PIV/QC/Baseline/quiver_frame_' + str(frame_idx) + '.png')
+# vecstride_x = 8  # optional, arrow spacing
+# vecstride_y = 15  # optional, arrow spacing
+# scale = 0.04  # optional, scaling of arrow length
+# headwidth = 5  # optional, width of the arrow head
+# headlength = 5  # optional, length of the arrow head
+# tailwidth = 0.001  # optional, width of the arrow tail
+# x_coords = TARGET_X  # optional, x coordinates of the velocity field
+# y_coords = TARGET_Y  # optional, y coordinates of the velocity field
+
+# quiver_from_npy(
+#     u_path,
+#     v_path,
+#     out_path,
+#     frame_idx=frame_idx,
+#     stride_x=vecstride_x,
+#     stride_y=vecstride_y,
+#     scale=scale,
+#     headwidth=headwidth,
+#     headlength=headlength,
+#     tailwidth=tailwidth,
+#     x_coords=x_coords,
+#     y_coords=y_coords,
+# )
