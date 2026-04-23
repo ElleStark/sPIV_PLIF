@@ -16,14 +16,41 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import RegularGridInterpolator
 
-# Target grid in millimeters
-TARGET_MIN_MM_Y = -148.5
-TARGET_MAX_MM_Y = 148.5
-TARGET_MIN_MM_X = -145.0
-TARGET_MAX_MM_X = 145.0
-TARGET_STEP_MM = 0.75
-TARGET_X = np.arange(TARGET_MIN_MM_X, TARGET_MAX_MM_X + TARGET_STEP_MM / 2, TARGET_STEP_MM)
-TARGET_Y = np.arange(TARGET_MIN_MM_Y, TARGET_MAX_MM_Y + TARGET_STEP_MM / 2, TARGET_STEP_MM)
+# # Target grid in millimeters
+# TARGET_MIN_MM_Y = -148.5
+# TARGET_MAX_MM_Y = 148.5
+# TARGET_MIN_MM_X = -145.0
+# TARGET_MAX_MM_X = 145.0
+# TARGET_STEP_MM = 0.75
+# TARGET_X = np.arange(TARGET_MIN_MM_X, TARGET_MAX_MM_X + TARGET_STEP_MM / 2, TARGET_STEP_MM)
+# TARGET_Y = np.arange(TARGET_MIN_MM_Y, TARGET_MAX_MM_Y + TARGET_STEP_MM / 2, TARGET_STEP_MM)
+
+# # Data paths
+# save_dir = Path("I:/Processed_Data/PIV/")
+# save_name = "Fractal/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_"
+# piv_dir = Path("G:/PIV_20Hz_data/")
+# piv_path1 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L2/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_L2/SubOverTimeMin_sl=all/MinMax Intensity Normalization/StereoPIV_MPd(4x24x24_75%ov).set"
+# piv_path2 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L1/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso/CopySelected_L1/SubOverTimeMin_sl=all/MinMax Intensity Normalization/StereoPIV_MPd(4x24x24_75%ov).set"
+# vec_grid = 1 # spacing of the vectors in pixels
+
+# # can set target_x, target_y based on actual grids from data
+# set_grids = lv.read_set(str(piv_path1))
+# gridsbuffer = set_grids[0]
+# gridsframe = gridsbuffer[0]
+# # arr = frame.as_masked_array()
+# h, w = gridsframe.shape
+
+# scales = getattr(gridsframe, "scales", None)
+# if scales and getattr(scales, "x", None) is not None and getattr(scales, "y", None) is not None:
+#     # Build from slope/offset; assume uniform spacing
+#     x_axisgrids = scales.x.offset + scales.x.slope * vec_grid * np.arange(w)
+#     y_axisgrids = scales.y.offset + scales.y.slope * vec_grid * np.arange(h)
+
+# TARGET_X = x_axisgrids
+# print(f"Target x grid: {TARGET_X.min()} to {TARGET_X.max()} mm, {len(TARGET_X)} points at {TARGET_X[1]-TARGET_X[0]:.3f} mm spacing")
+# TARGET_Y = y_axisgrids
+# print(f"Target y grid: {TARGET_Y.min()} to {TARGET_Y.max()} mm, {len(TARGET_Y)} points at {TARGET_Y[1]-TARGET_Y[0]:.3f} mm spacing")
+
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +70,12 @@ def ensure_axis_ascending(axis: np.ndarray, field: np.ndarray, axis_index: int) 
     return axis, field
 
 
-def extract_axes_from_vecbuffer(vecbuffer, vec_grid: int) -> tuple[np.ndarray, np.ndarray]:
+def extract_axes_from_vecbuffer(vecbuffer, vec_grid=6) -> tuple[np.ndarray, np.ndarray]:
     """
     Try to pull 1D physical axes from a vector buffer using scales.x/scales.y.
     """
     frame = vecbuffer[0]
-    arr = frame.as_masked_array()
+    # arr = frame.as_masked_array()
     h, w = frame.shape
 
     scales = getattr(frame, "scales", None)
@@ -132,14 +159,74 @@ def interpolate_vector_field(
 # -------------------------
 # Main processing
 # -------------------------
+def collate_vectors_native_grid(
+    head_a_path: Path,
+    head_b_path: Path,
+    offset: int = 0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Read two vector sets, interleave frames A/B, and collate onto native grids without interpolation.
+    Returns u/v/w stacks and corresponding x/y axes for each head.
+    """
+    if offset < 0:
+        raise ValueError("offset must be non-negative")
 
+    try:
+        set_a = lv.read_set(str(head_a_path))
+        set_b = lv.read_set(str(head_b_path))
+    except Exception as exc:
+        raise RuntimeError(f"Failed to read vector sets: {exc}") from exc
+
+    available_pairs = min(len(set_a), len(set_b))
+    total_frames = available_pairs * 2
+    if offset >= total_frames:
+        raise ValueError(f"Offset {offset} exceeds available frame count {total_frames}.")
+    total_frames -= offset
+
+    # get dims from first frame of first set
+    firstframe= set_a[0]
+    firstarray = firstframe[0].as_masked_array()
+    firstu = np.array(np.ma.filled(firstarray["u"], np.nan), dtype=np.float32)
+    height, width = firstu.shape
+
+    all_u = np.empty((total_frames, height, width), dtype=np.float32)  
+    all_v = np.empty((total_frames, height, width), dtype=np.float32)  
+    all_w = np.empty((total_frames, height, width), dtype=np.float32)
+
+    for global_idx in range(offset, offset + total_frames):
+        source_set = set_a if global_idx % 2 == 0 else set_b
+        source_idx = global_idx // 2
+        head_label = "A" if global_idx % 2 == 0 else "B"
+        try:
+            vecbuffer = source_set[source_idx]
+            if global_idx == offset:  # extract axes from the first frame only (assumes consistent grid)
+                x_axis, y_axis = extract_axes_from_vecbuffer(vecbuffer)
+            arr = vecbuffer[0].as_masked_array()
+            u = np.array(np.ma.filled(arr["u"], np.nan), dtype=np.float32)
+            v = np.array(np.ma.filled(arr["v"], np.nan), dtype=np.float32)
+            w = np.array(np.ma.filled(arr["w"], np.nan), dtype=np.float32)
+            all_u[global_idx - offset] = u
+            all_v[global_idx - offset] = v
+            all_w[global_idx - offset] = w
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to process frame {global_idx} (head {head_label}, source idx {source_idx}): {exc}"
+            ) from exc
+
+    return (
+        all_u,
+        all_v,
+        all_w,
+        x_axis,
+        y_axis,
+    )
 
 def collate_vectors_to_grid(
     head_a_path: Path,
     head_b_path: Path,
     vec_grid: int,
-    target_x: np.ndarray = TARGET_X,
-    target_y: np.ndarray = TARGET_Y,
+    target_x: np.ndarray,
+    target_y: np.ndarray,
     offset: int = 0,
     limit: Optional[int] = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -203,11 +290,14 @@ def collate_vectors_to_grid(
     return all_u, all_v, all_w
 
 
-def save_stacks(save_dir: Path, base_name: str, u: np.ndarray, v: np.ndarray, w: np.ndarray) -> None:
+def save_stacks(save_dir: Path, base_name: str, u: np.ndarray, v: np.ndarray, w: np.ndarray, xgrid: np.ndarray, ygrid: np.ndarray) -> None:
     save_dir.mkdir(parents=True, exist_ok=True)
     np.save(save_dir / f"{base_name}u.npy", u.astype(np.float32, copy=False))
     np.save(save_dir / f"{base_name}v.npy", v.astype(np.float32, copy=False))
     np.save(save_dir / f"{base_name}w.npy", w.astype(np.float32, copy=False))
+
+    np.save(save_dir / f"{base_name}xgrid.npy", xgrid.astype(np.float32, copy=False))
+    np.save(save_dir / f"{base_name}ygrid.npy", ygrid.astype(np.float32, copy=False))
 
 
 def save_qc_quiver(
@@ -320,19 +410,23 @@ def save_raw_qc_quiver(
     head_path: Path,
     save_dir: Path,
     base_name: str,
-    frame_idx: int = 0,
+    frame_idx: int = 100,
     stride: int = 10,
+    vec_grid: int = 6,
 ) -> None:
     """
     Save a raw quiver plot directly from a vecbuffer (before interpolation) for quick debugging.
     """
     try:
-        vec_set = lv.read_set(str(head_path))
+        vec_set = lv.read_set(head_path)
         vecbuffer = vec_set[frame_idx]
-        x_axis, y_axis = extract_axes_from_vecbuffer(vecbuffer)
+        x_axis, y_axis = extract_axes_from_vecbuffer(vecbuffer, vec_grid=vec_grid)
+        print(f"Extracted axes for QC: x from {x_axis.min()} to {x_axis.max()} ({len(x_axis)} points), y from {y_axis.min()} to {y_axis.max()} ({len(y_axis)} points)")
         arr = vecbuffer[0].as_masked_array()
         u = np.array(np.ma.filled(arr["u"], np.nan), dtype=np.float32)
+        print(f"u stats: min {np.nanmin(u)}, max {np.nanmax(u)}, mean {np.nanmean(u)}, dims {u.shape}")
         v = np.array(np.ma.filled(arr["v"], np.nan), dtype=np.float32)
+        print(f"v stats: min {np.nanmin(v)}, max {np.nanmax(v)}, mean {np.nanmean(v)}, dims {v.shape}")
     except Exception as exc:
         logger.warning("Skipping raw QC for %s: %s", head_path, exc)
         return
@@ -344,12 +438,12 @@ def save_raw_qc_quiver(
     Y_s = Y[::stride, ::stride]
     u_s = u[::stride, ::stride]
     v_s = v[::stride, ::stride]
-    mask_s = mask[::stride, ::stride]
+    # mask_s = mask[::stride, ::stride]
 
-    X_s = X_s[mask_s]
-    Y_s = Y_s[mask_s]
-    u_s = u_s[mask_s]
-    v_s = v_s[mask_s]
+    # X_s = X_s[mask_s]
+    # Y_s = Y_s[mask_s]
+    # u_s = u_s[mask_s]
+    # v_s = v_s[mask_s]
 
     qc_dir = save_dir / "QC"
     qc_dir.mkdir(parents=True, exist_ok=True)
@@ -361,7 +455,7 @@ def save_raw_qc_quiver(
         v_s,
         angles="xy",
         scale_units="xy",
-        scale=50,
+        scale=0.03,
         width=0.002,
         pivot="mid",
     )
@@ -379,18 +473,19 @@ def save_raw_qc_quiver(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-    # Hard-coded paths: adjust to your dataset
+    # Data paths
     save_dir = Path("I:/Processed_Data/PIV/")
-    save_name = "8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_"
+    save_name = "Fractal/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_"
     piv_dir = Path("G:/PIV_20Hz_data/")
     piv_path1 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L2/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_L2/SubOverTimeMin_sl=all/MinMax Intensity Normalization/StereoPIV_MPd(4x24x24_75%ov).set"
     piv_path2 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L1/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso/CopySelected_L1/SubOverTimeMin_sl=all/MinMax Intensity Normalization/StereoPIV_MPd(4x24x24_75%ov).set"
     vec_grid = 6 # spacing of the vectors in pixels
 
-    logger.info("Processing %s and %s onto target x grid %s..%s mm", piv_path1, piv_path2, TARGET_MIN_MM_X, TARGET_MAX_MM_X)
-    save_raw_qc_quiver(piv_path1, save_dir, save_name + 'A', frame_idx=0, stride=10)
-    save_raw_qc_quiver(piv_path2, save_dir, save_name + 'B', frame_idx=0, stride=10)
-    u_stack, v_stack, w_stack = collate_vectors_to_grid(piv_path1, piv_path2, vec_grid)
-    save_stacks(save_dir, save_name, u_stack, v_stack, w_stack)
-    save_qc_quiver(u_stack, v_stack, TARGET_X, TARGET_Y, save_dir, save_name, frame_idx=0, stride=10)
+    # logger.info("Processing %s and %s onto target x grid %s..%s mm", piv_path1, piv_path2, TARGET_MIN_MM_X, TARGET_MAX_MM_X)
+    save_raw_qc_quiver(piv_path1, save_dir, save_name + 'A', frame_idx=0, stride=10, vec_grid=vec_grid)
+    save_raw_qc_quiver(piv_path2, save_dir, save_name + 'B', frame_idx=0, stride=10, vec_grid=vec_grid)
+    u_stack, v_stack, w_stack, x_axisgrid, y_axisgrid = collate_vectors_native_grid(piv_path1, piv_path2, vec_grid)
+    # get u, v, w, x, y grids without grid interpolation
+    save_stacks(save_dir, save_name, u_stack, v_stack, w_stack, x_axisgrid, y_axisgrid)
+    # save_qc_quiver(u_stack, v_stack, TARGET_X, TARGET_Y, save_dir, save_name, frame_idx=0, stride=10)
     logger.info("Saved stacks to %s", save_dir)
