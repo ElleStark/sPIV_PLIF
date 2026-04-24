@@ -18,7 +18,7 @@ import numpy as np
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "baseline"
+CASE_NAME = "buoyant"
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"plif_{CASE_NAME}_smoothed.npy"
 U_PATH = BASE_PATH / "PIV" / f"piv_{CASE_NAME}_u.npy"
@@ -30,10 +30,11 @@ CONC_Y_SLICE = slice(100, 500)
 VEL_Y_SLICE = slice(100, 500)
 T_SLICE = slice(0, 6000)
 CHUNK_SIZE = 200
+PIXELS_PER_CM = 20
 
 ODOR_THRESHOLD = 0.005
-COMPUTE_CONDITIONAL_MEAN = False
-QUIVER_STEP = 10
+COMPUTE_CONDITIONAL_MEAN = True
+QUIVER_STEP = 1
 QUIVER_MIN_LENGTH = 5
 QUIVER_MAX_LENGTH = 20
 QUIVER_CMAP = "Reds"
@@ -92,6 +93,20 @@ def _open_stack(path: Path) -> np.memmap:
     return stack
 
 
+def _coarsen_to_cm_blocks(field_chunk: np.ndarray, pixels_per_cm: int) -> np.ndarray:
+    nx, ny, nt = field_chunk.shape
+    coarse_nx = nx // pixels_per_cm
+    coarse_ny = ny // pixels_per_cm
+    if coarse_nx == 0 or coarse_ny == 0:
+        raise ValueError(
+            f"Selected region {(nx, ny)} is smaller than one {pixels_per_cm}x{pixels_per_cm} block."
+        )
+
+    trimmed = field_chunk[: coarse_nx * pixels_per_cm, : coarse_ny * pixels_per_cm, :]
+    reshaped = trimmed.reshape(coarse_nx, pixels_per_cm, coarse_ny, pixels_per_cm, nt)
+    return np.nanmean(reshaped, axis=(1, 3)).astype(np.float32)
+
+
 def _compute_masked_velocity_mean(
     conc_stack: np.memmap,
     u_stack: np.memmap,
@@ -103,8 +118,12 @@ def _compute_masked_velocity_mean(
     t_slice: slice,
     chunk_size: int,
 ) -> tuple[np.ndarray, np.ndarray]:
-    nx = x_slice.stop - x_slice.start
-    ny = conc_y_slice.stop - conc_y_slice.start
+    nx = (x_slice.stop - x_slice.start) // PIXELS_PER_CM
+    conc_ny = (conc_y_slice.stop - conc_y_slice.start) // PIXELS_PER_CM
+    vel_ny = (vel_y_slice.stop - vel_y_slice.start) // PIXELS_PER_CM
+    if conc_ny != vel_ny:
+        raise ValueError("Concentration and velocity selections do not produce the same number of 1 cm blocks.")
+    ny = conc_ny
     u_sum = np.zeros((nx, ny), dtype=np.float64)
     v_sum = np.zeros((nx, ny), dtype=np.float64)
 
@@ -114,6 +133,10 @@ def _compute_masked_velocity_mean(
         conc_chunk = np.asarray(conc_stack[x_slice, conc_y_slice, chunk_start:chunk_stop], dtype=np.float32)
         u_chunk = np.asarray(u_stack[x_slice, vel_y_slice, chunk_start:chunk_stop], dtype=np.float32)
         v_chunk = np.asarray(v_stack[x_slice, vel_y_slice, chunk_start:chunk_stop], dtype=np.float32)
+
+        conc_chunk = _coarsen_to_cm_blocks(conc_chunk, PIXELS_PER_CM)
+        u_chunk = _coarsen_to_cm_blocks(u_chunk, PIXELS_PER_CM)
+        v_chunk = _coarsen_to_cm_blocks(v_chunk, PIXELS_PER_CM)
 
         mask = conc_chunk >= ODOR_THRESHOLD
         u_masked = np.where(mask, u_chunk, 0.0)
@@ -224,7 +247,7 @@ def main() -> None:
         v_mean,
         title=f"Odor-conditioned mean velocity\ncase={CASE_NAME}, c >= {ODOR_THRESHOLD}",
         fig_path=fig_path,
-        cbar_label="Odor-conditioned V",
+        cbar_label="Odor-conditioned V"
     )
 
     print(f"Saved odor-conditioned velocity arrays and plot to {OUT_DIR}")

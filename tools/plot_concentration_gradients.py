@@ -48,10 +48,6 @@ PRODUCT_VMAX = 0.01  # None -> symmetric auto range
 PRODUCT_LOG_SCALE = True  # signed fields can use symmetric log scale
 SPATIAL_THRESHOLD = 0.00001  # Values with |value| < threshold will be masked (not plotted)
 PRODUCT_THRESHOLD = 0.00001  # Values with |value| < threshold will be masked (not plotted)
-VECTOR_CMAP = "Reds"
-QUIVER_STRIDE = 10
-QUIVER_MIN_LENGTH = 5
-QUIVER_MAX_LENGTH = 20
 
 # QC plot settings
 QC_FRAMES = [0, 100, 200, 500, 1000, 2000, 3000, 4000, 5000, 6000]  # Frame index for QC plots
@@ -97,66 +93,6 @@ def _finalize_mean(sum_accum: np.ndarray, count_accum: np.ndarray) -> np.ndarray
     mean = sum_accum / np.where(count_accum == 0, np.nan, count_accum)
     return mean.astype(np.float32)
 
-
-def _compute_HR_correlator(    conc_stack: np.memmap,
-    *,
-    x_slice: slice,
-    y_slice: slice,
-    t_slice: slice,
-    chunk_size: int,) -> np.ndarray:
-
-    nx = x_slice.stop - x_slice.start - 1  # one less in x due to shift
-    print('nx:', nx)
-    ny = y_slice.stop - y_slice.start - 1  # one less in y due to shift   
-    print('ny:', ny)
-    hrCorr_sum = np.zeros((nx, ny), dtype=np.float64)
-    hrCorr_count = np.zeros((nx, ny), dtype=np.float64)
-    hrCorr_y_sum = np.zeros((nx, ny), dtype=np.float64)
-    hrCorr_y_count = np.zeros((nx, ny), dtype=np.float64)
-
-    total_frames = t_slice.stop - t_slice.start
-    for idx, core_start in enumerate(range(t_slice.start, t_slice.stop, chunk_size), start=1):
-        core_stop = min(core_start + chunk_size, t_slice.stop)
-        halo_start = max(t_slice.start+1, core_start - 1)
-        halo_stop = min(t_slice.stop, core_stop + 1)
-        chunk = np.asarray(conc_stack[x_slice, y_slice, halo_start:halo_stop], dtype=np.float32) 
-        # print(f"Loaded chunk {idx} for HR correlator: t={halo_start}:{halo_stop} (core: {core_start}:{core_stop})")
-
-        # HR correlator computation
-        # use second dimension (y, cross-stream direction) for spatial shifts and third dimension (time) for temporal shifts
-        shift_t = 1
-        shift_x = 1
-        shift_y = 1
-
-        # TBD: find max shift across arrays of x and y shifts 
-        hr_term1 = chunk[:-shift_x, shift_y:, shift_t:] * chunk[:-shift_x, :-shift_y, :-shift_t]  # c(x,y+1,t)*c(x,y,t-1)
-        print(f"Computed hr_x_term1 for chunk {idx}: dims {hr_term1.shape}")
-        hr_term2 = chunk[:-shift_x, shift_y:, :-shift_t] * chunk[:-shift_x, :-shift_y, shift_t:]  # c(x,y+1,t-1)*c(x,y,t)
-        hrCorr_chunk = hr_term1 - hr_term2  # HR correlator: c(x,y+1,t)*c(x,y,t-1) - c(x,y+1,t)*c(x,y+1,t)
-        hr_y_term1 = chunk[shift_x:, :-shift_y, shift_t:] * chunk[:-shift_x, :-shift_y, :-shift_t]  # c(x+1,y,t)*c(x,y,t-1)
-        print(f"Computed hr_y_term1 for chunk {idx}: dims {hr_y_term1.shape}")
-        hr_y_term2 = chunk[shift_x:, :-shift_y, :-shift_t] * chunk[:-shift_x, :-shift_y, shift_t:]  # c(x+1,y,t-1)*c(x,y,t)
-        hrCorr_y_chunk = hr_y_term1 - hr_y_term2  # Add HR correl
-
-        valid_start = core_start 
-        valid_stop = valid_start + (core_stop - core_start)
-        hrCorr_valid = hrCorr_chunk[:, :, valid_start:valid_stop]
-        hrCorr_sum += np.nansum(hrCorr_valid, axis=2)
-        hrCorr_count += np.sum(np.isfinite(hrCorr_valid), axis=2)
-
-        hrCorr_y_valid = hrCorr_y_chunk[:, :, valid_start:valid_stop]
-        hrCorr_y_sum += np.nansum(hrCorr_y_valid, axis=2)
-        hrCorr_y_count += np.sum(np.isfinite(hrCorr_y_valid), axis=2)
-
-        print(f"Computed HR correlator for chunk {idx}: dims {hrCorr_valid.shape}")
-
-        processed = core_stop - t_slice.start
-        print(
-            f"Processed {processed}/{total_frames} frames "
-            f"for HR correlator (chunk {idx}, t={core_start}:{core_stop})."
-        )   
-
-    return [_finalize_mean(hrCorr_sum, hrCorr_count), _finalize_mean(hrCorr_y_sum, hrCorr_y_count)]
 
 def _compute_gradient_means(
     conc_stack: np.memmap,
@@ -301,91 +237,6 @@ def _plot_field(
     plt.close(fig)
 
 
-def _plot_quiver_field(
-    x_component: np.ndarray,
-    y_component: np.ndarray,
-    *,
-    title: str,
-    cbar_label: str,
-    fig_path: Path,
-    cmap,
-    threshold: float | None = None,
-    stride: int = 1,
-) -> None:
-    nx = min(x_component.shape[0], y_component.shape[0])
-    ny = min(x_component.shape[1], y_component.shape[1])
-    u = np.asarray(x_component[:nx, :ny], dtype=np.float32).copy()
-    v = np.asarray(y_component[:nx, :ny], dtype=np.float32).copy()
-    magnitude = np.hypot(u, v)
-
-    if threshold is not None:
-        mask = magnitude < threshold
-        u[mask] = np.nan
-        v[mask] = np.nan
-        magnitude[mask] = np.nan
-
-    if stride > 1:
-        u = u[::stride, ::stride]
-        v = v[::stride, ::stride]
-        magnitude = magnitude[::stride, ::stride]
-
-    finite_mask = np.isfinite(magnitude)
-    if not np.any(finite_mask):
-        raise ValueError("Quiver plot requested, but vector field has no finite values.")
-
-    log_magnitude = np.full_like(magnitude, np.nan, dtype=np.float32)
-    log_magnitude[finite_mask] = np.log10(np.maximum(magnitude[finite_mask], 1e-12))
-    log_min = float(np.nanmin(log_magnitude[finite_mask]))
-    log_max = float(np.nanmax(log_magnitude[finite_mask]))
-    if np.isclose(log_min, log_max):
-        normalized_log_mag = np.ones_like(magnitude, dtype=np.float32)
-    else:
-        normalized_log_mag = np.full_like(magnitude, np.nan, dtype=np.float32)
-        normalized_log_mag[finite_mask] = (log_magnitude[finite_mask] - log_min) / (log_max - log_min)
-
-    x_offset = X_SLICE.start or 0
-    y_offset = Y_SLICE.start or 0
-    x_idx = np.arange(nx) + x_offset
-    y_idx = np.arange(ny) + y_offset
-    if stride > 1:
-        x_idx = x_idx[::stride]
-        y_idx = y_idx[::stride]
-    yy, xx = np.meshgrid(y_idx, x_idx)
-
-    unit_u = np.zeros_like(u, dtype=np.float32)
-    unit_v = np.zeros_like(v, dtype=np.float32)
-    unit_u[finite_mask] = u[finite_mask] / magnitude[finite_mask]
-    unit_v[finite_mask] = v[finite_mask] / magnitude[finite_mask]
-    length_scale = QUIVER_MIN_LENGTH + (QUIVER_MAX_LENGTH - QUIVER_MIN_LENGTH) * normalized_log_mag
-    u_scaled = unit_u * length_scale
-    v_scaled = unit_v * length_scale
-
-    fig, ax = plt.subplots(figsize=(8, 6))
-    q = ax.quiver(
-        yy,
-        xx,
-        u_scaled,
-        v_scaled,
-        log_magnitude,
-        angles="xy",
-        scale_units="xy",
-        scale=1.0,
-        cmap=cmap,
-        pivot="mid",
-        width=0.0025,
-    )
-    ax.set_xlabel(XLABEL)
-    ax.set_ylabel(YLABEL)
-    ax.set_title(title)
-    ax.set_aspect("equal", adjustable="box")
-    fig.colorbar(q, ax=ax, label=cbar_label)
-    fig.tight_layout()
-
-    fig_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(fig_path, dpi=FIG_DPI)
-    plt.close(fig)
-
-
 def _zscore_array(field: np.ndarray) -> np.ndarray:
     mean = np.nanmean(field)
     std = np.nanstd(field)
@@ -471,34 +322,7 @@ def main() -> None:
         #     log_scale=SPATIAL_LOG_SCALE,
         # )
 
-        # Plot Hassentstein Reichardt correlator frame
-        # use second dimension (y, cross-stream direction) for spatial shifts and third dimension (time) for temporal shifts
-        shift = 1
-        chunk = np.asarray(conc_stack[:, :, QC_FRAME:QC_FRAME+2], dtype=np.float32)  # shape (nx, ny, 1)
-        hr_term1 = chunk[:, shift:, shift:] * chunk[:, :-shift, :-shift]  # c(x,y+1,t)*c(x,y,t-1)
-        hr_term2 = chunk[:, shift:, :-shift] * chunk[:, :-shift, shift:]  # c(x,y+1,t-1)*c(x,y,t)
-        hrCorr_frame = np.squeeze(hr_term1 - hr_term2)  # HR correlator: c(x,y+1,t)*c(x,y,t-1) - c(x,y+1,t)*c(x,y+1,t)
-
-        _plot_field(
-            hrCorr_frame,
-            title=f"HR correlator frame {QC_FRAME}\ncase={CASE_NAME}",
-            cbar_label="odor velocity (mm/s)",
-            fig_path=OUT_DIR / f"QC_frames/HRcorrelator_frame_{QC_FRAME}_{CASE_NAME}.png",
-            cmap=SPATIAL_CMAP,
-            vmin=SPATIAL_VMIN,
-            vmax=SPATIAL_VMAX,
-            log_scale=SPATIAL_LOG_SCALE,
-        )
-
-    # dcdx_mean, dcdy_mean, dcdt_mean, dcdx_dcdt_mean, dcdy_dcdt_mean = _compute_gradient_means(
-    #     conc_stack,
-    #     x_slice=x_slice,
-    #     y_slice=y_slice,
-    #     t_slice=t_slice,
-    #     chunk_size=CHUNK_SIZE,
-    # )
-
-    hrCorr_mean, hrcorr_y_mean = _compute_HR_correlator(
+    dcdx_mean, dcdy_mean, dcdt_mean, dcdx_dcdt_mean, dcdy_dcdt_mean = _compute_gradient_means(
         conc_stack,
         x_slice=x_slice,
         y_slice=y_slice,
@@ -506,22 +330,19 @@ def main() -> None:
         chunk_size=CHUNK_SIZE,
     )
 
-    # if Z_SCORE:
-    #     dcdx_mean = _zscore_array(dcdx_mean)
-    #     dcdy_mean = _zscore_array(dcdy_mean)
-    #     dcdx_dcdt_mean = _zscore_array(dcdx_dcdt_mean)
-    #     dcdy_dcdt_mean = _zscore_array(dcdy_dcdt_mean)
+    if Z_SCORE:
+        dcdx_mean = _zscore_array(dcdx_mean)
+        dcdy_mean = _zscore_array(dcdy_mean)
+        dcdx_dcdt_mean = _zscore_array(dcdx_dcdt_mean)
+        dcdy_dcdt_mean = _zscore_array(dcdy_dcdt_mean)
         
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    # np.save(OUT_DIR / f"dcdx_mean_{CASE_NAME}.npy", dcdx_mean)
-    # np.save(OUT_DIR / f"dcdy_mean_{CASE_NAME}.npy", dcdy_mean)
-    # np.save(OUT_DIR / f"dcdx_times_dcdt_mean_{CASE_NAME}.npy", dcdx_dcdt_mean)
-    # np.save(OUT_DIR / f"dcdy_times_dcdt_mean_{CASE_NAME}.npy", dcdy_dcdt_mean)
-    np.save(OUT_DIR / f"hrCorr_mean_{CASE_NAME}.npy", hrCorr_mean)
-    np.save(OUT_DIR / f"hrCorr_y_mean_{CASE_NAME}.npy", hrcorr_y_mean)
-
-    # hrCorr_mean, hrcorr_y_mean = np.load(OUT_DIR / f"hrCorr_mean_{CASE_NAME}.npy"), np.load(OUT_DIR / f"hrCorr_y_mean_{CASE_NAME}.npy")
+    np.save(OUT_DIR / f"dcdx_mean_{CASE_NAME}.npy", dcdx_mean)
+    np.save(OUT_DIR / f"dcdy_mean_{CASE_NAME}.npy", dcdy_mean)
+    np.save(OUT_DIR / f"dcdt_mean_{CASE_NAME}.npy", dcdt_mean)
+    np.save(OUT_DIR / f"dcdx_times_dcdt_mean_{CASE_NAME}.npy", dcdx_dcdt_mean)
+    np.save(OUT_DIR / f"dcdy_times_dcdt_mean_{CASE_NAME}.npy", dcdy_dcdt_mean)
 
     spatial_vmin = SPATIAL_VMIN
     spatial_vmax = SPATIAL_VMAX
@@ -532,83 +353,72 @@ def main() -> None:
         spatial_vmin = -lim
         spatial_vmax = lim
 
-    # _plot_field(
-    #     dcdx_mean,
-    #     title=f"Time-averaged signed spatial gradient <dc/dx>_t\ncase={CASE_NAME}",
-    #     cbar_label="<dc/dx>_t",
-    #     fig_path=OUT_DIR / f"dcdx_mean_{CASE_NAME}.png",
-    #     cmap=SPATIAL_CMAP,
-    #     vmin=spatial_vmin,
-    #     vmax=spatial_vmax,
-    #     log_scale=SPATIAL_LOG_SCALE,
-    #     threshold=SPATIAL_THRESHOLD,
-    # )
-
-    # _plot_field(
-    #     dcdy_mean,
-    #     title=f"Time-averaged signed spatial gradient <dc/dy>_t\ncase={CASE_NAME}",
-    #     cbar_label="<dc/dy>_t",
-    #     fig_path=OUT_DIR / f"dcdy_mean_{CASE_NAME}.png",
-    #     cmap=SPATIAL_CMAP,
-    #     vmin=spatial_vmin,
-    #     vmax=spatial_vmax,
-    #     log_scale=SPATIAL_LOG_SCALE,
-    #     threshold=SPATIAL_THRESHOLD,
-    # )
-
-    # _plot_field(
-    #     dcdt_mean,
-    #     title=f"Time-averaged signed spatial gradient <dc/dt>_t\ncase={CASE_NAME}",
-    #     cbar_label="<dc/dt>_t",
-    #     fig_path=OUT_DIR / f"dcdt_mean_{CASE_NAME}.png",
-    #     cmap=SPATIAL_CMAP,
-    #     vmin=spatial_vmin,
-    #     vmax=spatial_vmax,
-    #     log_scale=SPATIAL_LOG_SCALE,
-    #     threshold=SPATIAL_THRESHOLD,
-    # )
-
-
-    # prod_vmin = PRODUCT_VMIN
-    # prod_vmax = PRODUCT_VMAX
-    # if prod_vmin is None or prod_vmax is None:
-    #     merged = np.concatenate([dcdx_dcdt_mean.ravel(), dcdy_dcdt_mean.ravel()])
-    #     lim = float(np.nanmax(np.abs(merged))) if np.any(np.isfinite(merged)) else 1.0
-    #     lim = max(lim, 1e-12)
-    #     prod_vmin = -lim
-    #     prod_vmax = lim
-
-    # _plot_field(
-    #     dcdx_dcdt_mean,
-    #     title=f"Time-averaged signed product <(dc/dx)*(dc/dt)>_t\ncase={CASE_NAME}",
-    #     cbar_label="<(dc/dx)*(dc/dt)>_t",
-    #     fig_path=OUT_DIR / f"dcdx_times_dcdt_mean_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
-    #     cmap=PRODUCT_CMAP,
-    #     vmin=prod_vmin,
-    #     vmax=prod_vmax,
-    #     log_scale=PRODUCT_LOG_SCALE,
-    # )
-
-    # _plot_field(
-    #     dcdy_dcdt_mean,
-    #     title=f"Time-averaged signed product <(dc/dy)*(dc/dt)>_t\ncase={CASE_NAME}",
-    #     cbar_label="<(dc/dy)*(dc/dt)>_t",
-    #     fig_path=OUT_DIR / f"dcdy_times_dcdt_mean_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
-    #     cmap=PRODUCT_CMAP,
-    #     vmin=prod_vmin,
-    #     vmax=prod_vmax,
-    #     log_scale=PRODUCT_LOG_SCALE,
-    # )
-
-    _plot_quiver_field(
-        hrCorr_mean,
-        hrcorr_y_mean,
-        title=f"Time-averaged HR correlator\ncase={CASE_NAME}",
-        cbar_label="HR correlator magnitude",
-        fig_path=OUT_DIR / f"hrCorr_quiver_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
-        cmap=VECTOR_CMAP,
+    _plot_field(
+        dcdx_mean,
+        title=f"Time-averaged signed spatial gradient <dc/dx>_t\ncase={CASE_NAME}",
+        cbar_label="<dc/dx>_t",
+        fig_path=OUT_DIR / f"dcdx_mean_{CASE_NAME}.png",
+        cmap=SPATIAL_CMAP,
+        vmin=spatial_vmin,
+        vmax=spatial_vmax,
+        log_scale=SPATIAL_LOG_SCALE,
         threshold=SPATIAL_THRESHOLD,
-        stride=QUIVER_STRIDE,
+    )
+
+    _plot_field(
+        dcdy_mean,
+        title=f"Time-averaged signed spatial gradient <dc/dy>_t\ncase={CASE_NAME}",
+        cbar_label="<dc/dy>_t",
+        fig_path=OUT_DIR / f"dcdy_mean_{CASE_NAME}.png",
+        cmap=SPATIAL_CMAP,
+        vmin=spatial_vmin,
+        vmax=spatial_vmax,
+        log_scale=SPATIAL_LOG_SCALE,
+        threshold=SPATIAL_THRESHOLD,
+    )
+
+    _plot_field(
+        dcdt_mean,
+        title=f"Time-averaged signed spatial gradient <dc/dt>_t\ncase={CASE_NAME}",
+        cbar_label="<dc/dt>_t",
+        fig_path=OUT_DIR / f"dcdt_mean_{CASE_NAME}.png",
+        cmap=SPATIAL_CMAP,
+        vmin=spatial_vmin,
+        vmax=spatial_vmax,
+        log_scale=SPATIAL_LOG_SCALE,
+        threshold=SPATIAL_THRESHOLD,
+    )
+
+
+    prod_vmin = PRODUCT_VMIN
+    prod_vmax = PRODUCT_VMAX
+    if prod_vmin is None or prod_vmax is None:
+        merged = np.concatenate([dcdx_dcdt_mean.ravel(), dcdy_dcdt_mean.ravel()])
+        lim = float(np.nanmax(np.abs(merged))) if np.any(np.isfinite(merged)) else 1.0
+        lim = max(lim, 1e-12)
+        prod_vmin = -lim
+        prod_vmax = lim
+
+    _plot_field(
+        dcdx_dcdt_mean,
+        title=f"Time-averaged signed product <(dc/dx)*(dc/dt)>_t\ncase={CASE_NAME}",
+        cbar_label="<(dc/dx)*(dc/dt)>_t",
+        fig_path=OUT_DIR / f"dcdx_times_dcdt_mean_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
+        cmap=PRODUCT_CMAP,
+        vmin=prod_vmin,
+        vmax=prod_vmax,
+        log_scale=PRODUCT_LOG_SCALE,
+    )
+
+    _plot_field(
+        dcdy_dcdt_mean,
+        title=f"Time-averaged signed product <(dc/dy)*(dc/dt)>_t\ncase={CASE_NAME}",
+        cbar_label="<(dc/dy)*(dc/dt)>_t",
+        fig_path=OUT_DIR / f"dcdy_times_dcdt_mean_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
+        cmap=PRODUCT_CMAP,
+        vmin=prod_vmin,
+        vmax=prod_vmax,
+        log_scale=PRODUCT_LOG_SCALE,
     )
 
     print(f"Saved outputs to {OUT_DIR}")
