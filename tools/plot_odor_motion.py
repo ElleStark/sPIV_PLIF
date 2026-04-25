@@ -23,10 +23,13 @@ OUT_DIR = BASE_PATH / "Plots" / "odor_motion"
 
 X_SLICE = slice(0, 601)
 Y_SLICE = slice(100, 500)
-T_SLICE = slice(0, 200)
+T_SLICE = slice(0, 6000)
 CHUNK_SIZE = 100
 PIXELS_PER_CM = 20
 C_MIN = 0.005
+
+MM_PER_PX = 0.5
+FRAME_PER_SEC = 20 
 
 SHIFT_X = 1
 SHIFT_Y = 1
@@ -112,7 +115,7 @@ def _compute_hr_correlator(
         halo_start = core_start 
         halo_stop = core_stop + SHIFT_T
         conc_chunk = np.asarray(conc_stack[x_slice, y_slice, halo_start:halo_stop], dtype=np.float32)
-        print(f"chunk dimensions: {conc_chunk.shape}")
+        # print(f"chunk dimensions: {conc_chunk.shape}")
 
         ######## motion correlator - Kadakia et al 2022 method ################
 
@@ -120,19 +123,19 @@ def _compute_hr_correlator(
         # may need to loop since each location may have different idx for argmax
         for i in np.arange(2, nx):
             xidx = int(i * PIXELS_PER_CM)
-            print(f'i: {i} xidx: {xidx}')
+            # print(f'i: {i} xidx: {xidx}')
 
             for j in np.arange(2, ny):
                 yidx = int(j * PIXELS_PER_CM)
-                print(f'j: {j} yidx: {yidx}')  
+                # print(f'j: {j} yidx: {yidx}')  
                 # average y-values +/- 1 cm to get vector of x values +/- 1 cm from point of interest
                 x_conc_vals = np.mean(conc_chunk[xidx-int(1.5*PIXELS_PER_CM):xidx+int(1.5*PIXELS_PER_CM), yidx-int(0.5*PIXELS_PER_CM):yidx+int(0.5*PIXELS_PER_CM), :], axis=1)
                 x_conc_vals[x_conc_vals<0.005] = np.nan
-                print(f"x_vector dimensions (expect 60 x tsteps): {x_conc_vals.shape}")
+                # print(f"x_vector dimensions (expect 60 x tsteps): {x_conc_vals.shape}")
                 # average x-values +/- 1 cm to get vector of y values +/- 1 cm from point of interest
                 y_conc_vals = np.mean(conc_chunk[xidx-int(0.5*PIXELS_PER_CM):xidx+int(0.5*PIXELS_PER_CM), yidx-int(1.5*PIXELS_PER_CM):yidx+int(1.5*PIXELS_PER_CM), :], axis=0)
                 y_conc_vals[y_conc_vals<0.005] = np.nan
-                print(f"y_vector dimensions (expect 60 x tsteps): {y_conc_vals.shape}")
+                # print(f"y_vector dimensions (expect 60 x tsteps): {y_conc_vals.shape}")
                 # loop through time
                 for tstep in np.arange(np.shape(conc_chunk)[2] - 1):
                     
@@ -147,7 +150,7 @@ def _compute_hr_correlator(
                         cov_temp = cov_temp_sum / PIXELS_PER_CM
                         if cov_temp > cov_x_max:
                             cov_x_max = cov_temp
-                            max_x_idx = delta_x
+                            max_x_idx = delta_x * MM_PER_PX * FRAME_PER_SEC
 
                     # if index is +/- 20, skip this value. 
                     if np.abs(max_x_idx)<PIXELS_PER_CM:
@@ -163,7 +166,7 @@ def _compute_hr_correlator(
                         cov_temp = y_conc_vals[PIXELS_PER_CM, tstep] * y_conc_vals[PIXELS_PER_CM + delta_y, tstep + 1]
                         if cov_temp > cov_y_max:
                             cov_y_max = cov_temp
-                            max_y_idx = delta_y
+                            max_y_idx = delta_y * MM_PER_PX * FRAME_PER_SEC
                     if np.abs(max_y_idx)<PIXELS_PER_CM:
                         hr_y_count[i, j] += 1
                         hr_y_sum[i, j] += max_y_idx
