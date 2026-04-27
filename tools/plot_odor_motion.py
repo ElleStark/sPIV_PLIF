@@ -16,21 +16,25 @@ from matplotlib.colors import SymLogNorm
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "smoke_plume"
+CASE_NAME = "baseline"
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
-# CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"plif_{CASE_NAME}_smoothed.npy"
-CONCENTRATION_PATH = BASE_PATH / "Emonet_smoke" / "HalfmmGrid_new_smoke_2a.npy"  
+CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"plif_{CASE_NAME}_smoothed.npy"
+# CONCENTRATION_PATH = BASE_PATH / "Emonet_smoke" / "HalfmmGrid_new_smoke_2a.npy"  
 OUT_DIR = BASE_PATH / "Plots" / "odor_motion"
 
-X_SLICE = slice(0, 332)
-Y_SLICE = slice(0, 528)
-T_SLICE = slice(0, 200)
+MEAN_CONC = np.load(BASE_PATH / "mean_fields" / f"mean_fields_{CASE_NAME}.npz")["c"].astype(np.float32)
+
+X_SLICE = slice(0, 600)
+Y_SLICE = slice(100, 500)
+T_SLICE = slice(0, 4000)
 CHUNK_SIZE = 100
 PIXELS_PER_CM = 20
 C_MIN = 0.001
+XLIM = (0, 600//PIXELS_PER_CM)
+YLIM = (0, 400//PIXELS_PER_CM)
 
 MM_PER_PX = 0.5
-FRAME_PER_SEC = 180 
+FRAME_PER_SEC = 20 
 
 SHIFT_X = 1
 SHIFT_Y = 1
@@ -47,9 +51,10 @@ FIELD_VMAX = 0.01
 FIELD_THRESHOLD = 0.00001
 
 VECTOR_CMAP = "Reds"
-QUIVER_STRIDE = 1
+QUIVER_STRIDE = 20
 QUIVER_MIN_LENGTH = 0.5
 QUIVER_MAX_LENGTH = 1
+QUIVER_LENGTH = 0.8
 
 QC_FRAMES = [0, 100, 200, 500, 1000, 2000, 3000, 4000, 5000, 6000]
 # -------------------------------------------------------------------
@@ -100,16 +105,18 @@ def _compute_hr_correlator(
     t_slice: slice,
     chunk_size: int,
 ) -> tuple[np.ndarray, np.ndarray]:
-    nx = x_slice.stop - x_slice.start - PIXELS_PER_CM
-    ny = y_slice.stop - y_slice.start - PIXELS_PER_CM
-    nx = nx // PIXELS_PER_CM
-    ny = ny // PIXELS_PER_CM
-    # nx = x_slice.stop - x_slice.start - SHIFT_X
-    # ny = y_slice.stop - y_slice.start - SHIFT_Y
+    # nx = x_slice.stop - x_slice.start - PIXELS_PER_CM
+    # ny = y_slice.stop - y_slice.start - PIXELS_PER_CM
+    # nx = nx // PIXELS_PER_CM
+    # ny = ny // PIXELS_PER_CM
+    nx = x_slice.stop - x_slice.start - 2 * SHIFT_X
+    ny = y_slice.stop - y_slice.start - SHIFT_Y
     hr_x_sum = np.zeros((nx, ny), dtype=np.float32)
     hr_x_count = np.zeros((nx, ny), dtype=np.float32)
+    # hr_x_ts = np.full((nx, ny, t_slice.stop - t_slice.start), np.nan, dtype=np.float32)
     hr_y_sum = np.zeros((nx, ny), dtype=np.float32)
     hr_y_count = np.zeros((nx, ny), dtype=np.float32)
+    # hr_y_ts = np.full((nx, ny, t_slice.stop - t_slice.start), np.nan, dtype=np.float32)
 
     # loop through time in chunks for memory handling
     total_frames = t_slice.stop - t_slice.start - SHIFT_T
@@ -118,81 +125,102 @@ def _compute_hr_correlator(
         core_stop = min(core_start + chunk_size, t_slice.stop)
         halo_start = core_start 
         halo_stop = core_stop + SHIFT_T
-        conc_chunk = np.asarray(conc_stack[x_slice, y_slice, halo_start:halo_stop], dtype=np.float32)
-        # print(f"chunk dimensions: {conc_chunk.shape}")
+        conc_chunk = np.asarray(conc_stack[x_slice, y_slice, halo_start:halo_stop], dtype=np.float32).copy()
+        # conc_chunk = conc_chunk / 255
+        conc_chunk[conc_chunk < C_MIN] = np.nan
+        conc_chunk = conc_chunk - MEAN_CONC[x_slice, y_slice, np.newaxis]
+        # print(f"nan count in chunk: {np.isnan(conc_chunk).sum()} out of {conc_chunk.size} values")
+        print(f"chunk dimensions: {conc_chunk.shape}, min: {np.nanmin(conc_chunk)}, max: {np.nanmax(conc_chunk)}")
 
         ######## motion correlator - Kadakia et al 2022 method ################
 
-        # select locations on 1-cm lattice
-        # may need to loop since each location may have different idx for argmax
-        for i in np.arange(2, nx):
-            xidx = int(i * PIXELS_PER_CM)
-            # print(f'i: {i} xidx: {xidx}')
+        # # select locations on 1-cm lattice
+        # # may need to loop since each location may have different idx for argmax
+        # for i in np.arange(2, nx):
+        #     xidx = int(i * PIXELS_PER_CM)
+        #     # print(f'i: {i} xidx: {xidx}')
 
-            for j in np.arange(2, ny):
-                yidx = int(j * PIXELS_PER_CM)
-                # print(f'j: {j} yidx: {yidx}')  
-                # average y-values +/- 1 cm to get vector of x values +/- 1 cm from point of interest
-                x_conc_vals = np.mean(conc_chunk[xidx-int(1.5*PIXELS_PER_CM):xidx+int(1.5*PIXELS_PER_CM), yidx-int(0.5*PIXELS_PER_CM):yidx+int(0.5*PIXELS_PER_CM), :], axis=1)
-                # x_conc_vals[x_conc_vals<0.001] = np.nan
-                # print(f"x_vector dimensions (expect 60 x tsteps): {x_conc_vals.shape}, min: {np.nanmin(x_conc_vals)}, max: {np.nanmax(x_conc_vals)}")
-                # average x-values +/- 1 cm to get vector of y values +/- 1 cm from point of interest
-                y_conc_vals = np.mean(conc_chunk[xidx-int(0.5*PIXELS_PER_CM):xidx+int(0.5*PIXELS_PER_CM), yidx-int(1.5*PIXELS_PER_CM):yidx+int(1.5*PIXELS_PER_CM), :], axis=0)
-                # y_conc_vals[y_conc_vals<0.001] = np.nan
-                # print(f"y_vector dimensions (expect 60 x tsteps): {y_conc_vals.shape}, min: {np.nanmin(y_conc_vals)}, max: {np.nanmax(y_conc_vals)}")
-                # loop through time
-                for tstep in np.arange(np.shape(conc_chunk)[2] - 1):
+        #     for j in np.arange(2, ny):
+        #         yidx = int(j * PIXELS_PER_CM)
+                # # print(f'j: {j} yidx: {yidx}')  
+                # # average y-values +/- 1 cm to get vector of x values +/- 1 cm from point of interest
+                # x_conc_vals = np.mean(conc_chunk[xidx-int(1.5*PIXELS_PER_CM):xidx+int(1.5*PIXELS_PER_CM), yidx-int(0.5*PIXELS_PER_CM):yidx+int(0.5*PIXELS_PER_CM), :], axis=1)
+                # # x_conc_vals = conc_chunk[xidx-int(1*PIXELS_PER_CM):xidx+int(1*PIXELS_PER_CM), yidx, :]
+                
+                # # x_conc_vals[x_conc_vals<0.001] = np.nan
+                # # print(f"x_vector dimensions (expect 60 x tsteps): {x_conc_vals.shape}, min: {np.nanmin(x_conc_vals)}, max: {np.nanmax(x_conc_vals)}")
+                # # average x-values +/- 1 cm to get vector of y values +/- 1 cm from point of interest
+                # y_conc_vals = np.mean(conc_chunk[xidx-int(0.5*PIXELS_PER_CM):xidx+int(0.5*PIXELS_PER_CM), yidx-int(1.5*PIXELS_PER_CM):yidx+int(1.5*PIXELS_PER_CM), :], axis=0)
+                # # y_conc_vals = conc_chunk[xidx, yidx-int(1*PIXELS_PER_CM):yidx+int(1*PIXELS_PER_CM), :]
+                
+                # # y_conc_vals[y_conc_vals<0.001] = np.nan
+                # # print(f"y_vector dimensions (expect 60 x tsteps): {y_conc_vals.shape}, min: {np.nanmin(y_conc_vals)}, max: {np.nanmax(y_conc_vals)}")
+                
+                # # loop through time
+                # for tstep in np.arange(CHUNK_SIZE-1):
                     
-                    ### compute x-direction correlator ###
-                    # compute covariance C(x, t) * C(x+delta_x, t+delta_t) for delta_x from -20 to 20
-                    cov_x_max = 0
-                    max_x_idx = -PIXELS_PER_CM
-                    for delta_x in np.arange(-PIXELS_PER_CM, PIXELS_PER_CM):
-                        cov_temp_sum = 0
-                        for idx_shift in np.arange(0, int(PIXELS_PER_CM)):
-                            cov_temp_sum += x_conc_vals[idx_shift + PIXELS_PER_CM, tstep] * x_conc_vals[idx_shift + PIXELS_PER_CM + delta_x, tstep + 1]
-                        cov_temp = cov_temp_sum / PIXELS_PER_CM
-                        if cov_temp > cov_x_max:
-                            cov_x_max = cov_temp
-                            max_x_idx = delta_x 
+                #     ### compute x-direction correlator ###
+                #     # compute covariance C(x, t) * C(x+delta_x, t+delta_t) for delta_x from -20 to 20
+                #     cov_x_max = 0
+                #     max_x_idx = -PIXELS_PER_CM
+                #     for delta_x in np.arange(-PIXELS_PER_CM, PIXELS_PER_CM):
+                #         cov_temp_sum = 0
+                #         for idx_shift in np.arange(0, int(PIXELS_PER_CM)):
+                #         # for idx_shift in [0]:
+                #             cov_temp_sum += x_conc_vals[idx_shift + PIXELS_PER_CM, tstep] * x_conc_vals[idx_shift + PIXELS_PER_CM + delta_x, tstep + 1]
+                #         cov_temp = cov_temp_sum / PIXELS_PER_CM
+                #         if cov_temp > cov_x_max:
+                #             cov_x_max = cov_temp
+                #             max_x_idx = delta_x 
+                            
+                #     # if index is +/- 20, skip this value. 
+                #     if np.abs(max_x_idx)<PIXELS_PER_CM:
+                #         # else, sum covariance to running total for this location and increment x_count by 1
+                #         hr_x_count[i, j] += 1
+                #         hr_x_sum[i, j] += max_x_idx
+                #         # if tstep%10==0:
+                #             # print(f"i: {i} j: {j} tstep: {tstep} max_x_idx: {max_x_idx}")
+                #         hr_x_ts[i, j, core_start + tstep] = max_x_idx * MM_PER_PX * FRAME_PER_SEC
 
-                    # if index is +/- 20, skip this value. 
-                    if np.abs(max_x_idx)<PIXELS_PER_CM:
-                        # else, sum covariance to running total for this location and increment x_count by 1
-                        hr_x_count[i, j] += 1
-                        hr_x_sum[i, j] += max_x_idx
-
-                    ### compute y-direction correlator ###
-                    # compute covariance C(y, t) * C(y+delta_y, t+delta_t) for delta_y from -20 to 20
-                    cov_y_max = 0
-                    max_y_idx = -PIXELS_PER_CM
-                    for delta_y in np.arange(-PIXELS_PER_CM, PIXELS_PER_CM):
-                        cov_temp = y_conc_vals[PIXELS_PER_CM, tstep] * y_conc_vals[PIXELS_PER_CM + delta_y, tstep + 1]
-                        if cov_temp > cov_y_max:
-                            cov_y_max = cov_temp
-                            max_y_idx = delta_y 
-                    if np.abs(max_y_idx)<PIXELS_PER_CM:
-                        hr_y_count[i, j] += 1
-                        hr_y_sum[i, j] += max_y_idx
-
+                #     ### compute y-direction correlator ###
+                #     # compute covariance C(y, t) * C(y+delta_y, t+delta_t) for delta_y from -20 to 20
+                #     cov_y_max = 0
+                #     max_y_idx = -PIXELS_PER_CM
+                #     for delta_y in np.arange(-PIXELS_PER_CM, PIXELS_PER_CM):
+                #         cov_temp_sum = 0
+                #         for idx_shift in np.arange(0, int(PIXELS_PER_CM)):
+                #         # for idx_shift in [0]:
+                #             cov_temp_sum += y_conc_vals[idx_shift + PIXELS_PER_CM, tstep] * y_conc_vals[idx_shift + PIXELS_PER_CM + delta_y, tstep + 1]
+                #         cov_temp = cov_temp_sum / PIXELS_PER_CM
+                #         if cov_temp > cov_y_max:
+                #             cov_y_max = cov_temp
+                #             max_y_idx = delta_y 
+                #     if np.abs(max_y_idx)<PIXELS_PER_CM:
+                #         hr_y_count[i, j] += 1
+                #         hr_y_sum[i, j] += max_y_idx
+                #         # if tstep%10==0:
+                #             # print(f"i: {i} j: {j} tstep: {tstep} max_y_idx: {max_y_idx}")
+                #         hr_y_ts[i, j, core_start + tstep] = max_y_idx * MM_PER_PX * FRAME_PER_SEC
 
         #################################################################
 
 
         ########### HR correlator - Brudner et al method ################
 
-        # hr_x_term1 = conc_chunk[:-SHIFT_X, SHIFT_Y:, SHIFT_T:] * conc_chunk[:-SHIFT_X, :-SHIFT_Y, :-SHIFT_T]
-        # hr_x_term2 = conc_chunk[:-SHIFT_X, SHIFT_Y:, :-SHIFT_T] * conc_chunk[:-SHIFT_X, :-SHIFT_Y, SHIFT_T:]
-        # hr_x_chunk = hr_x_term1 - hr_x_term2
+        hr_y_term1 = conc_chunk[SHIFT_X:, SHIFT_Y:, SHIFT_T:] * conc_chunk[SHIFT_X:, :-SHIFT_Y, :-SHIFT_T]
+        hr_y_term2 = conc_chunk[SHIFT_X:, SHIFT_Y:, :-SHIFT_T] * conc_chunk[SHIFT_X:, :-SHIFT_Y, SHIFT_T:]
+        hr_y_chunk = hr_y_term1 - hr_y_term2
+        print(f"HR y correlator chunk dimensions: {hr_y_chunk.shape}")
 
-        # hr_y_term1 = conc_chunk[SHIFT_X:, :-SHIFT_Y, SHIFT_T:] * conc_chunk[:-SHIFT_X, :-SHIFT_Y, :-SHIFT_T]
-        # hr_y_term2 = conc_chunk[SHIFT_X:, :-SHIFT_Y, :-SHIFT_T] * conc_chunk[:-SHIFT_X, :-SHIFT_Y, SHIFT_T:]
-        # hr_y_chunk = hr_y_term1 - hr_y_term2
+        hr_x_term1 = conc_chunk[SHIFT_X:, SHIFT_Y:, SHIFT_T:] * conc_chunk[:-SHIFT_X, SHIFT_Y:, :-SHIFT_T]
+        hr_x_term2 = conc_chunk[SHIFT_X:, SHIFT_Y:, :-SHIFT_T] * conc_chunk[:-SHIFT_X, SHIFT_Y:, SHIFT_T:]
+        hr_x_chunk = hr_x_term1 - hr_x_term2
+        print(f"HR x correlator chunk dimensions: {hr_x_chunk.shape}")
 
-        # hr_x_sum += np.nansum(hr_x_chunk, axis=2)
-        # hr_x_count += np.sum(np.isfinite(hr_x_chunk), axis=2)
-        # hr_y_sum += np.nansum(hr_y_chunk, axis=2)
-        # hr_y_count += np.sum(np.isfinite(hr_y_chunk), axis=2)
+        hr_x_sum += np.nansum(hr_x_chunk, axis=2)
+        hr_x_count += np.sum(np.isfinite(hr_x_chunk), axis=2)
+        hr_y_sum += np.nansum(hr_y_chunk, axis=2)
+        hr_y_count += np.sum(np.isfinite(hr_y_chunk), axis=2)
 
         ############################################################################
 
@@ -202,7 +230,10 @@ def _compute_hr_correlator(
             f"Processed {processed}/{total_frames} frames "
             f"for HR correlator (chunk {idx}, t={core_start}:{core_stop})."
         )
-
+    # np.save(OUT_DIR / f"KadakiaCorr_x_ts_{CASE_NAME}.npy", hr_x_ts)
+    # np.save(OUT_DIR / f"KadakiaCorr_y_ts_{CASE_NAME}.npy", hr_y_ts)
+    # hr_x_count = total_frames
+    # hr_y_count = total_frames
     return _finalize_mean(hr_x_sum, hr_x_count), _finalize_mean(hr_y_sum, hr_y_count)
 
 
@@ -362,6 +393,76 @@ def _plot_quiver_field(
     plt.close(fig)
 
 
+def _plot_fixed_length_quiver_field(
+    x_component: np.ndarray,
+    y_component: np.ndarray,
+    *,
+    fig_path: Path,
+    cmap,
+    cbar_label: str = "magnitude",
+    threshold: float | None = None,
+    stride: int = 1,
+    arrow_length: float = QUIVER_LENGTH,
+) -> None:
+    # nx = min(x_component.shape[0], y_component.shape[0])
+    # ny = min(x_component.shape[1], y_component.shape[1])
+    u = np.asarray(x_component[:, :], dtype=np.float32).copy()
+    v = np.asarray(y_component[:, :], dtype=np.float32).copy()
+    magnitude = np.sqrt(u**2 + v**2)
+
+    if threshold is not None:
+        mask = magnitude < threshold
+        u[mask] = np.nan
+        v[mask] = np.nan
+        magnitude[mask] = np.nan
+
+    if stride > 1:
+        u = u[::stride, ::stride]
+        v = v[::stride, ::stride]
+        magnitude = magnitude[::stride, ::stride]
+
+    # finite_mask = np.isfinite(magnitude) & (magnitude > 0)
+    # if not np.any(finite_mask):
+    #     raise ValueError("Quiver plot requested, but vector field has no finite nonzero values.")
+
+    # x_offset = X_SLICE.start or 0
+    # y_offset = Y_SLICE.start or 0
+    # x_idx = np.arange(nx) + x_offset
+    # y_idx = np.arange(ny) + y_offset
+    # if stride > 1:
+    #     x_idx = x_idx[::stride]
+    #     y_idx = y_idx[::stride]
+    # yy, xx = np.meshgrid(y_idx, x_idx)
+
+    # u_plot = np.full_like(u, np.nan, dtype=np.float32)
+    # v_plot = np.full_like(v, np.nan, dtype=np.float32)
+    # u_plot[finite_mask] = arrow_length * u[finite_mask] / magnitude[finite_mask]
+    # v_plot[finite_mask] = arrow_length * v[finite_mask] / magnitude[finite_mask]
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    q = ax.quiver(
+        u, v,
+        magnitude,
+        angles="xy",
+        scale_units="xy",
+        scale=0.001,
+        cmap=cmap,
+        pivot="mid",
+        width=0.005,
+    )
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel(XLABEL)
+    ax.set_ylabel(YLABEL)
+    ax.set_xlim(YLIM)
+    ax.set_ylim(XLIM)
+    fig.colorbar(q, ax=ax, label=cbar_label)
+    fig.tight_layout()
+
+    fig_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(fig_path, dpi=FIG_DPI)
+    plt.close(fig)
+
+
 def main() -> None:
     conc_stack = _open_concentration_stack()
     # x_slice, y_slice, t_slice = _resolve_selected_slices(conc_stack)
@@ -400,16 +501,15 @@ def main() -> None:
     )
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    np.save(OUT_DIR / f"KadakiaCorr_mean_{CASE_NAME}.npy", hr_x_mean)
-    np.save(OUT_DIR / f"KadakiaCorr_y_mean_{CASE_NAME}.npy", hr_y_mean)
+    np.save(OUT_DIR / f"HRCorr_mean_{CASE_NAME}.npy", hr_x_mean)
+    np.save(OUT_DIR / f"HRCorr_y_mean_{CASE_NAME}.npy", hr_y_mean)
 
-    _plot_quiver_field(
-        hr_y_mean,
+    _plot_fixed_length_quiver_field(
+        -hr_y_mean,
         hr_x_mean,
-        title=f"Time-averaged motion correlator\ncase={CASE_NAME}",
-        cbar_label="correlator magnitude",
-        fig_path=OUT_DIR / f"hrCorr_quiver_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
+        fig_path=OUT_DIR / f"HRCorr_quiver_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
         cmap=VECTOR_CMAP,
+        cbar_label="correlator magnitude",
         threshold=FIELD_THRESHOLD,
         stride=QUIVER_STRIDE,
     )
