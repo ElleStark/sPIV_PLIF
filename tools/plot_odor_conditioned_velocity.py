@@ -18,16 +18,16 @@ import numpy as np
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "buoyant"
+CASE_NAME = "baseline"
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"plif_{CASE_NAME}_smoothed.npy"
-U_PATH = BASE_PATH / "PIV" / f"piv_{CASE_NAME}_u.npy"
-V_PATH = BASE_PATH / "PIV" / f"piv_{CASE_NAME}_v.npy"
+U_PATH = BASE_PATH / "flow_properties/flx_u_v_w" / f"u_flx_{CASE_NAME}_FINAL_AllTimeSteps.npy"
+V_PATH = BASE_PATH / "flow_properties/flx_u_v_w" / f"v_flx_{CASE_NAME}_FINAL_AllTimeSteps.npy"
 OUT_DIR = BASE_PATH / "Plots" / "odor_conditioned_velocity"
 
 X_SLICE = slice(0, 600)
 CONC_Y_SLICE = slice(100, 500)
-VEL_Y_SLICE = slice(100, 500)
+VEL_Y_SLICE = slice(0, 400)
 T_SLICE = slice(0, 6000)
 CHUNK_SIZE = 200
 PIXELS_PER_CM = 20

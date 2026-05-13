@@ -505,7 +505,7 @@ def main() -> None:
     np.save(OUT_DIR / f"HRCorr_y_mean_{CASE_NAME}.npy", hr_y_mean)
 
     _plot_fixed_length_quiver_field(
-        -hr_y_mean,
+        hr_y_mean,
         hr_x_mean,
         fig_path=OUT_DIR / f"HRCorr_quiver_{CASE_NAME}_t{T_SLICE.start}to{T_SLICE.stop}.png",
         cmap=VECTOR_CMAP,
