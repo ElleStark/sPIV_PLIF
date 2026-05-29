@@ -21,7 +21,7 @@ if str(SRC_ROOT) not in sys.path:
 from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 
 # -------------------------------------------------------------------
-# Edit these paths/settings for your dataset
+# Edit these paths/settings for desired dataset
 MEAN_FIELDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_baseline.npz")
 OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/mean_baseline_velocity.png")
 CMIN = 0.0
