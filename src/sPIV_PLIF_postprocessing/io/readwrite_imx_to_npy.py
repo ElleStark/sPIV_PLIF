@@ -22,6 +22,7 @@ from scipy.interpolate import RegularGridInterpolator
 logger = logging.getLogger(__name__)
 
 # Target grid in millimeters
+INTERPOLATED = False;  # choose whether to interpolate onto a common grid or keep original axes
 TARGET_MIN_MM = -149.5
 TARGET_MAX_MM = 149.5
 TARGET_STEP_MM = 0.5
@@ -109,7 +110,18 @@ def collate_heads(
     if total_frames == 0:
         raise ValueError("No frames remain after applying offset and limit.")
 
-    combined = np.zeros((len(target_y), len(target_x), total_frames), dtype=np.float32)
+    if INTERPOLATED:
+        combined = np.zeros((len(target_y), len(target_x), total_frames), dtype=np.float32)
+    else:
+        try:
+            buffer = set_a[0]
+            arr = buffer.as_masked_array()
+            frame = np.array(arr.filled(np.nan), dtype=np.float32)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to read frame 0 from 'head A': {exc}"
+            ) from exc
+        combined = np.zeros((frame.shape[0], frame.shape[1], total_frames), dtype=np.float32)
 
     for global_idx in range(offset, offset + total_frames):
         source_set = set_a if global_idx % 2 == 0 else set_b
@@ -117,14 +129,24 @@ def collate_heads(
         try:
             buffer = source_set[source_idx]
             frame, x_axis, y_axis = extract_frame_and_axes(buffer)
-            interp_frame = interpolate_frame_to_target(frame, x_axis, y_axis, target_x, target_y)
         except Exception as exc:
             raise RuntimeError(
-                f"Failed to read/interpolate frame {global_idx} (source index {source_idx}) "
+                f"Failed to read frame {global_idx} (source index {source_idx}) "
                 f"from {'head A' if global_idx % 2 == 0 else 'head B'}: {exc}"
             ) from exc
+        
+        if INTERPOLATED:
+            try:
+                data_frame = interpolate_frame_to_target(frame, x_axis, y_axis, target_x, target_y)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to interpolate frame {global_idx} from "
+                    f"{'head A' if global_idx % 2 == 0 else 'head B'}: {exc}"
+                ) from exc
+        else:
+            data_frame = frame
 
-        combined[:, :, global_idx - offset] = interp_frame
+        combined[:, :, global_idx - offset] = data_frame
 
     return combined
 

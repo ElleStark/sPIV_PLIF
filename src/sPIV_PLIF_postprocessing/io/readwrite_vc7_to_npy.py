@@ -16,11 +16,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import RegularGridInterpolator
 
-# # Target grid in millimeters
-# TARGET_MIN_MM_Y = -148.5
-# TARGET_MAX_MM_Y = 148.5
-# TARGET_MIN_MM_X = -145.0
-# TARGET_MAX_MM_X = 145.0
+# Target grid in millimeters
+TARGET_MIN_MM_Y = -155
+TARGET_MAX_MM_Y = 155
+TARGET_MIN_MM_X = -155.0
+TARGET_MAX_MM_X = 155.0
 # TARGET_STEP_MM = 0.75
 # TARGET_X = np.arange(TARGET_MIN_MM_X, TARGET_MAX_MM_X + TARGET_STEP_MM / 2, TARGET_STEP_MM)
 # TARGET_Y = np.arange(TARGET_MIN_MM_Y, TARGET_MAX_MM_Y + TARGET_STEP_MM / 2, TARGET_STEP_MM)
@@ -82,7 +82,11 @@ def extract_axes_from_vecbuffer(vecbuffer, vec_grid=6) -> tuple[np.ndarray, np.n
     if scales and getattr(scales, "x", None) is not None and getattr(scales, "y", None) is not None:
         # Build from slope/offset; assume uniform spacing
         x_axis = scales.x.offset + scales.x.slope * vec_grid * np.arange(w)
+        x_axis = x_axis.astype(np.float32)
+        # print(f"Extracted x axis from scales: {x_axis.min()} to {x_axis.max()} mm, {len(x_axis)} points at {x_axis[1]-x_axis[0]:.3f} mm spacing")
         y_axis = scales.y.offset + scales.y.slope * vec_grid * np.arange(h)
+        y_axis = y_axis.astype(np.float32)
+        # print(f"Extracted y axis from scales: {y_axis.min()} to {y_axis.max()} mm, {len(y_axis)} points at {y_axis[1]-y_axis[0]:.3f} mm spacing")
         return x_axis, y_axis
 
     raise RuntimeError("Could not find scales on vector buffer; calibration metadata missing.")
@@ -183,15 +187,34 @@ def collate_vectors_native_grid(
         raise ValueError(f"Offset {offset} exceeds available frame count {total_frames}.")
     total_frames -= offset
 
-    # get dims from first frame of first set
-    firstframe= set_a[0]
-    firstarray = firstframe[0].as_masked_array()
-    firstu = np.array(np.ma.filled(firstarray["u"], np.nan), dtype=np.float32)
-    height, width = firstu.shape
+    # # get dims from first frame of first set
+    # firstframe= set_a[0]
+    # firstarray = firstframe[0].as_masked_array()
+    # firstu = np.array(np.ma.filled(firstarray["u"], np.nan), dtype=np.float32)
+    # print(f"First frame raw u shape: {firstu.shape}")
+    # x_axis, y_axis = extract_axes_from_vecbuffer(firstframe)
 
-    all_u = np.empty((total_frames, height, width), dtype=np.float32)  
-    all_v = np.empty((total_frames, height, width), dtype=np.float32)  
-    all_w = np.empty((total_frames, height, width), dtype=np.float32)
+
+    # # Ensure axes ascending and fields aligned
+    # y_axis, firstu = ensure_axis_ascending(y_axis, firstu, axis_index=0)
+    # x_axis, firstu = ensure_axis_ascending(x_axis, firstu, axis_index=1)
+
+    # # print(f"x subset: {np.shape(x_axis[(x_axis >= TARGET_MIN_MM_X - 1) & (x_axis <= TARGET_MAX_MM_X + 1)])}")
+    # firstu = firstu[(y_axis > TARGET_MIN_MM_Y ) & (y_axis < TARGET_MAX_MM_Y + 1), :]
+    # firstu = firstu[:, (x_axis > TARGET_MIN_MM_X ) & (x_axis < TARGET_MAX_MM_X + 1)]
+
+    # height, width = firstu.shape
+    # print(f"first u shape: {firstu.shape}")
+
+    # all_u = np.empty((total_frames, height, width), dtype=np.float32)  
+    # all_v = np.empty((total_frames, height, width), dtype=np.float32)  
+    # all_w = np.empty((total_frames, height, width), dtype=np.float32)
+
+    all_u = []
+    all_v = []
+    all_w = []
+    all_x = []
+    all_y = []
 
     for global_idx in range(offset, offset + total_frames):
         source_set = set_a if global_idx % 2 == 0 else set_b
@@ -199,15 +222,42 @@ def collate_vectors_native_grid(
         head_label = "A" if global_idx % 2 == 0 else "B"
         try:
             vecbuffer = source_set[source_idx]
-            if global_idx == offset:  # extract axes from the first frame only (assumes consistent grid)
-                x_axis, y_axis = extract_axes_from_vecbuffer(vecbuffer)
+            # if global_idx == offset:  # extract axes from the first frame only (assumes consistent grid)
+            x_axis, y_axis = extract_axes_from_vecbuffer(vecbuffer)
             arr = vecbuffer[0].as_masked_array()
             u = np.array(np.ma.filled(arr["u"], np.nan), dtype=np.float32)
             v = np.array(np.ma.filled(arr["v"], np.nan), dtype=np.float32)
             w = np.array(np.ma.filled(arr["w"], np.nan), dtype=np.float32)
-            all_u[global_idx - offset] = u
-            all_v[global_idx - offset] = v
-            all_w[global_idx - offset] = w
+
+
+            # Ensure axes ascending and fields aligned
+            # y_axis, u = ensure_axis_ascending(y_axis, u, axis_index=0)
+            # y_axis, v = ensure_axis_ascending(y_axis, v, axis_index=0)
+            # y_axis, w = ensure_axis_ascending(y_axis, w, axis_index=0)
+            # x_axis, u = ensure_axis_ascending(x_axis, u, axis_index=1)
+            # x_axis, v = ensure_axis_ascending(x_axis, v, axis_index=1)
+            # x_axis, w = ensure_axis_ascending(x_axis, w, axis_index=1)
+
+            # selected based on x, y desired bounds
+            u = u[(y_axis >= TARGET_MIN_MM_Y -1) & (y_axis <= TARGET_MAX_MM_Y + 1), :]
+            u = u[:, (x_axis >= TARGET_MIN_MM_X -1) & (x_axis <= TARGET_MAX_MM_X + 1)]
+
+            v = v[(y_axis >= TARGET_MIN_MM_Y -1) & (y_axis <= TARGET_MAX_MM_Y + 1), :]
+            v = v[:, (x_axis >= TARGET_MIN_MM_X -1) & (x_axis <= TARGET_MAX_MM_X + 1)]
+
+
+            w = w[(y_axis >= TARGET_MIN_MM_Y -1) & (y_axis <= TARGET_MAX_MM_Y + 1), :]
+            w = w[:, (x_axis >= TARGET_MIN_MM_X -1) & (x_axis <= TARGET_MAX_MM_X + 1)]
+
+            x_axis = x_axis[(x_axis >= TARGET_MIN_MM_X -1) & (x_axis <= TARGET_MAX_MM_X + 1)]
+            y_axis = y_axis[(y_axis >= TARGET_MIN_MM_Y -1) & (y_axis <= TARGET_MAX_MM_Y + 1)]
+
+            all_u.append(u)
+            all_v.append(v)
+            all_w.append(w)
+            all_x.append(x_axis)
+            all_y.append(y_axis)
+
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to process frame {global_idx} (head {head_label}, source idx {source_idx}): {exc}"
@@ -217,8 +267,8 @@ def collate_vectors_native_grid(
         all_u,
         all_v,
         all_w,
-        x_axis,
-        y_axis,
+        all_x,
+        all_y,
     )
 
 def collate_vectors_to_grid(
@@ -292,12 +342,12 @@ def collate_vectors_to_grid(
 
 def save_stacks(save_dir: Path, base_name: str, u: np.ndarray, v: np.ndarray, w: np.ndarray, xgrid: np.ndarray, ygrid: np.ndarray) -> None:
     save_dir.mkdir(parents=True, exist_ok=True)
-    np.save(save_dir / f"{base_name}u.npy", u.astype(np.float32, copy=False))
-    np.save(save_dir / f"{base_name}v.npy", v.astype(np.float32, copy=False))
-    np.save(save_dir / f"{base_name}w.npy", w.astype(np.float32, copy=False))
+    np.savez(save_dir / f"{base_name}u.npz", *u)
+    np.savez(save_dir / f"{base_name}v.npz", *v)
+    np.savez(save_dir / f"{base_name}w.npz", *w)
 
-    np.save(save_dir / f"{base_name}xgrid.npy", xgrid.astype(np.float32, copy=False))
-    np.save(save_dir / f"{base_name}ygrid.npy", ygrid.astype(np.float32, copy=False))
+    np.savez(save_dir / f"{base_name}xgrid_stack.npz", *xgrid)
+    np.savez(save_dir / f"{base_name}ygrid_stack.npz", *ygrid)
 
 
 def save_qc_quiver(
@@ -314,11 +364,15 @@ def save_qc_quiver(
     qc_dir = save_dir / "QC"
     qc_dir.mkdir(parents=True, exist_ok=True)
 
-    u_f = u[:, :, frame_idx]
-    v_f = v[:, :, frame_idx]
+    u_f = u[frame_idx]
+    v_f = v[frame_idx]
+    # x_f = target_x[frame_idx] if target_x.ndim == 2 else target_x
+    # y_f = target_y[frame_idx] if target_y.ndim == 2 else target_y
+    x_f = target_x[frame_idx] 
+    y_f = target_y[frame_idx]
     mask = np.isfinite(u_f) & np.isfinite(v_f)
 
-    X, Y = np.meshgrid(target_x, target_y, indexing="xy")
+    X, Y = np.meshgrid(x_f, y_f, indexing="xy")
     X_s = X[::stride, ::stride]
     Y_s = Y[::stride, ::stride]
     u_s = u_f[::stride, ::stride]
@@ -330,7 +384,7 @@ def save_qc_quiver(
     u_s = u_s[mask_s]
     v_s = v_s[mask_s]
 
-    plt.figure(figsize=(8, 6))
+    figure, ax = plt.subplots(figsize=(8, 6))
     plt.quiver(
         X_s,
         Y_s,
@@ -338,16 +392,16 @@ def save_qc_quiver(
         v_s,
         angles="xy",
         scale_units="xy",
-        scale=50,
+        scale=0.050,
         width=0.002,
         pivot="mid",
     )
     plt.xlabel("x (mm)")
     plt.ylabel("y (mm)")
     plt.title(f"Vector field QC (frame {frame_idx})")
-    plt.axis("equal")
-    plt.xlim(target_x.min(), target_x.max())
-    plt.ylim(target_y.min(), target_y.max())
+    ax.set_aspect("equal", adjustable='box')
+    plt.xlim(TARGET_MIN_MM_Y, TARGET_MAX_MM_Y)
+    plt.ylim(TARGET_MIN_MM_X, TARGET_MAX_MM_X)
     plt.tight_layout()
     qc_path = qc_dir / f"{base_name}qc_frame{frame_idx}.png"
     plt.savefig(qc_path, dpi=200)
@@ -475,17 +529,18 @@ if __name__ == "__main__":
 
     # Data paths
     save_dir = Path("I:/Processed_Data/PIV/")
-    save_name = "Fractal/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_"
-    piv_dir = Path("G:/PIV_20Hz_data/")
-    piv_path1 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L2/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_L2/SubOverTimeMin_sl=all/MinMax Intensity Normalization/StereoPIV_MPd(4x24x24_75%ov).set"
-    piv_path2 = piv_dir / "8.29.2025_20Hz_BuoyancyEffects_L1/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso/CopySelected_L1/SubOverTimeMin_sl=all/MinMax Intensity Normalization/StereoPIV_MPd(4x24x24_75%ov).set"
+    save_name = "Native_grid/Nearbed/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_"
+    piv_dir = Path("I:/")
+    piv_path1 = piv_dir / "10.01.2025_nearbed_L2/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso/Copy_L2/SubOverTimeMin_sl=all_01/AddGeometricMask/MinMax Intensity Normalization/StereoPIV_MPd(4x24x24_75%ov).set"
+    piv_path2 = piv_dir / "10.01.2025_nearbed_L1/10.01.2025_30cms_nearbed_smTG15cm_neuHe0.875_air0.952_PIV0.01_iso_L2/Copy_L1/SubOverTimeMin_sl=all/AddGeometricMask/MinMax Intensity Normalization/StereoPIV_MPd(4x24x24_75%ov).set"
     vec_grid = 6 # spacing of the vectors in pixels
 
     # logger.info("Processing %s and %s onto target x grid %s..%s mm", piv_path1, piv_path2, TARGET_MIN_MM_X, TARGET_MAX_MM_X)
     save_raw_qc_quiver(piv_path1, save_dir, save_name + 'A', frame_idx=0, stride=10, vec_grid=vec_grid)
     save_raw_qc_quiver(piv_path2, save_dir, save_name + 'B', frame_idx=0, stride=10, vec_grid=vec_grid)
-    u_stack, v_stack, w_stack, x_axisgrid, y_axisgrid = collate_vectors_native_grid(piv_path1, piv_path2, vec_grid)
+    u_stack, v_stack, w_stack, x_axis_stack, y_axis_stack = collate_vectors_native_grid(piv_path1, piv_path2, offset=0)
     # get u, v, w, x, y grids without grid interpolation
-    save_stacks(save_dir, save_name, u_stack, v_stack, w_stack, x_axisgrid, y_axisgrid)
-    # save_qc_quiver(u_stack, v_stack, TARGET_X, TARGET_Y, save_dir, save_name, frame_idx=0, stride=10)
+    save_qc_quiver(u_stack, v_stack, x_axis_stack, y_axis_stack, save_dir, save_name, frame_idx=0, stride=10)
+    save_stacks(save_dir, save_name, u_stack, v_stack, w_stack, x_axis_stack, y_axis_stack)
+
     logger.info("Saved stacks to %s", save_dir)
