@@ -26,16 +26,16 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 # Edit these paths/settings for your dataset
 # -------------------------------------------------------------------
 CASE_NAME = "baseline"  # used to build file paths
-U_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/old/piv_{CASE_NAME}_u.npy")
-V_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/old/piv_{CASE_NAME}_v.npy")
-W_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/old/piv_{CASE_NAME}_w.npy")
-C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/Old/plif_{CASE_NAME}.npy")
+U_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/Interpolated_to_PLIF/piv_{CASE_NAME}_u.npy")
+V_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/Interpolated_to_PLIF/piv_{CASE_NAME}_v.npy")
+# W_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/old/piv_{CASE_NAME}_w.npy")
+C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_PLIF.npy")
 FRAME_IDX = 1000  # frame index to plot
-OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/{CASE_NAME}/frame{FRAME_IDX}_resTEST.png")
+OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/{CASE_NAME}/frame{FRAME_IDX}_NEWDATA.png")
 CMIN = 0.01
 CMAX = 1.0
-X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
-Y_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
+X_PATH: Path | None = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_xgrid.npy")
+Y_PATH: Path | None = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_ygrid.npy")
 LOG_SCALE = True  # set True to plot concentration on a log scale
 # CMAP_NAME = cmr.rainforest # jet for concentration
 # CMAP_SLICE = (0.0, 1)
@@ -50,7 +50,7 @@ C_UNDER_TRANSITION: float | None = 0.1  # fraction of cmap for white->jet blend
 C_UNDER_START: float | None = 0.01
 C_UNDER_END: float | None = 0.02
 PCOLORMESH_ALPHA = 0.85  # reduce saturation/opacity of the concentration field
-X_LIMITS: tuple[float, float] | None = (-100, 100)
+X_LIMITS: tuple[float, float] | None = None
 X_SUBSET: tuple[float, float] | None = None
 Y_SUBSET: tuple[float, float] | None = None
 # X_LIMITS: tuple[float, float] | None = (-20.0, 0.0)
@@ -87,7 +87,7 @@ QUIVER_TAILWIDTH = 0.005
 USE_MEMMAP = False  # set True to load with mmap_mode='r'
 LOAD_FRAME_ONLY = True  # True loads just FRAME_IDX; False loads full stacks
 USE_DARK_BACKGROUND = False
-APPLY_MEDIAN_SMOOTH = True
+APPLY_MEDIAN_SMOOTH = False
 MEDIAN_WINDOW = 9  # pixels
 
 
@@ -172,7 +172,7 @@ def main() -> None:
     stacks = load_fields(
         U_PATH,
         V_PATH,
-        W_PATH,
+        # W_PATH,
         C_PATH,
         enforce_float32=True,
         mmap_mode="r" if USE_MEMMAP else None,
@@ -180,7 +180,9 @@ def main() -> None:
     )
 
     x_coords = np.load(X_PATH) if X_PATH else None
+    x_coords = x_coords[0, :]
     y_coords = np.load(Y_PATH) if Y_PATH else None
+    y_coords = y_coords[:, 0]
     u_plot = stacks.u
     v_plot = stacks.v
     c_plot = _median_smooth(stacks.c, MEDIAN_WINDOW) if APPLY_MEDIAN_SMOOTH else stacks.c

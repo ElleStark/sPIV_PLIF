@@ -17,14 +17,14 @@ import numpy as np
 class FieldStacks:
     u: np.ndarray
     v: np.ndarray
-    w: np.ndarray
+    # w: np.ndarray
     c: np.ndarray
 
     def summary(self) -> str:
         return (
             f"u {self.u.shape} dtype={self.u.dtype}, "
             f"v {self.v.shape} dtype={self.v.dtype}, "
-            f"w {self.w.shape} dtype={self.w.dtype}, "
+            # f"w {self.w.shape} dtype={self.w.dtype}, "
             f"c {self.c.shape} dtype={self.c.dtype}"
         )
 
@@ -32,7 +32,7 @@ class FieldStacks:
 def load_fields(
     u_path: Path,
     v_path: Path,
-    w_path: Path,
+    # w_path: Path,
     c_path: Path,
     *,
     enforce_float32: bool = True,
@@ -64,21 +64,21 @@ def load_fields(
     def _load(path: Path) -> np.ndarray:
         arr = np.load(path, mmap_mode=effective_mmap_mode)
         if frame_idx is not None and arr.ndim == 3:
-            if frame_idx < 0 or frame_idx >= arr.shape[2]:
+            if frame_idx < 0 or frame_idx >= arr.shape[0]:
                 raise IndexError(f"frame {frame_idx} out of range for {path.name}")
             # Materialize just the requested slice so we don't hold onto
             # the memmap for the whole stack.
-            arr = np.array(arr[:, :, frame_idx], copy=True)
+            arr = np.array(arr[frame_idx, :, :], copy=True)
         if enforce_float32 and arr.dtype != np.float32:
             arr = arr.astype(np.float32, copy=False)
         return arr
 
     u = _load(u_path)
     v = _load(v_path)
-    w = _load(w_path)
+    # w = _load(w_path)
     c = _load(c_path)
 
-    return FieldStacks(u=u, v=v, w=w, c=c)
+    return FieldStacks(u=u, v=v, c=c)
 
 
 if __name__ == "__main__":
