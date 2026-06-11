@@ -38,7 +38,7 @@ def compute_mean(in_path: Path, axis: int, suffix: str) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compute mean over axis for 3D .npy stacks.")
     parser.add_argument("--inputs", nargs="+", required=True, help="Input .npy file(s).")
-    parser.add_argument("--axis", type=int, default=2, help="Axis to average over (default: 2).")
+    parser.add_argument("--axis", type=int, default=0, help="Axis to average over (default: 2).")
     parser.add_argument("--suffix", type=str, default="_mean", help="Suffix to append to output filenames.")
     args = parser.parse_args()
 
