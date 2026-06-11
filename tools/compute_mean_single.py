@@ -2,7 +2,7 @@
 Compute mean across time (axis=2) for 3D .npy stacks.
 
 Usage:
-    python tools/compute_mean_single.py --inputs PATH1 PATH2 [--axis 2] [--suffix _mean]
+    python tools/compute_mean_single.py --inputs PATH1 PATH2 [--axis 0] [--suffix _mean]
 
 Defaults use nanmean to ignore NaNs and save alongside inputs with the suffix.
 """

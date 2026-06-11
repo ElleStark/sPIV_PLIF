@@ -29,18 +29,32 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import (
 # -------------------------------------------------------------------
 # List of (label, path) pairs for mean field .npz files
 MEAN_CASES: list[tuple[str, Path]] = [
-    ("smSource", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_smSource.npz")),
-    ("nearbed", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_nearbed.npz")),
-    ("fractal", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_fractal.npz")),
-    ("baseline", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_baseline.npz")),
-    ("buoyant", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_buoyant.npz")),
-    ("diffusive", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_diffusive.npz")),
+    ("smSource", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/smSource_PLIF_mean.npy")),
+    ("nearbed", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/nearbed_PLIF_mean.npy")),
+    ("fractal", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/fractal_PLIF_mean.npy")),
+    ("baseline", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/baseline_PLIF_mean.npy")),
+    ("buoyant", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/buoyant_PLIF_mean.npy")),
+    ("diffusive", Path("E:/sPIV_PLIF_ProcessedData/mean_fields/diffusive_PLIF_mean.npy")),
 ]
 # List of (label, path) pairs for single .npy mean concentration arrays
 MEAN_C_ARRAYS: list[tuple[str, Path]] = [
 ]
-X_PATH = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
-Y_PATH = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
+X_PATHS: list[tuple[str, Path]] = [
+    ("smSource", Path("E:/sPIV_PLIF_ProcessedData/PLIF/smSource_xgrid.npy")), 
+    ("nearbed", Path("E:/sPIV_PLIF_ProcessedData/PLIF/nearbed_xgrid.npy")),
+    ("fractal", Path("E:/sPIV_PLIF_ProcessedData/PLIF/fractal_xgrid.npy")),
+    ("baseline", Path("E:/sPIV_PLIF_ProcessedData/PLIF/baseline_xgrid.npy")),
+    ("buoyant", Path("E:/sPIV_PLIF_ProcessedData/PLIF/buoyant_xgrid.npy")),       
+    ("diffusive", Path("E:/sPIV_PLIF_ProcessedData/PLIF/diffusive_xgrid.npy")),
+]
+Y_PATHS: list[tuple[str, Path]] = [
+    ("smSource", Path("E:/sPIV_PLIF_ProcessedData/PLIF/smSource_ygrid.npy")), 
+    ("nearbed", Path("E:/sPIV_PLIF_ProcessedData/PLIF/nearbed_ygrid.npy")),
+    ("fractal", Path("E:/sPIV_PLIF_ProcessedData/PLIF/fractal_ygrid.npy")),
+    ("baseline", Path("E:/sPIV_PLIF_ProcessedData/PLIF/baseline_ygrid.npy")),
+    ("buoyant", Path("E:/sPIV_PLIF_ProcessedData/PLIF/buoyant_ygrid.npy")),       
+    ("diffusive", Path("E:/sPIV_PLIF_ProcessedData/PLIF/diffusive_ygrid.npy")),
+]
 TARGET_Y_MM = [250.0, 150.0, 50.0]
 OUT_DIR = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/Profiles")
 XLABEL = "x (mm)"
@@ -60,10 +74,11 @@ GAUSSIAN_MARKERS = ["o", "s", "^", "D", "P", "X"]
 def _load_mean_c(path: Path) -> np.ndarray:
     if not path.exists():
         raise FileNotFoundError(f"Mean fields file not found: {path}")
-    data = np.load(path)
-    if "c" not in data:
-        raise KeyError(f"Missing 'c' in {path}")
-    c_mean = np.array(data["c"], copy=False)
+    # data = np.load(path)
+    # if "c" not in data:
+    #     raise KeyError(f"Missing 'c' in {path}")
+    # c_mean = np.array(data["c"], copy=False)
+    c_mean = np.load(path)
     if c_mean.ndim != 2:
         raise ValueError(f"Expected 2D mean concentration in {path}; got shape {c_mean.shape}")
     return c_mean
@@ -83,8 +98,22 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    x_coords = np.load(X_PATH)
-    y_coords = np.load(Y_PATH)
+    # x_coords = np.load(X_PATH)
+    # x_coords = x_coords[0, :]
+    # y_coords = np.load(Y_PATH)
+    # y_coords = y_coords[:, 0]
+
+    x_coords_loaded = {}
+    for label, path in X_PATHS:
+        x_coords = np.load(path)
+        x_coords = x_coords[0, :]
+        x_coords_loaded[label] = x_coords
+
+    y_coords_loaded = {}
+    for label, path in Y_PATHS:
+        y_coords = np.load(path)
+        y_coords = y_coords[:, 0]
+        y_coords_loaded[label] = y_coords
 
     cases_loaded: list[tuple[str, np.ndarray]] = []
     for label, path in MEAN_CASES:
@@ -98,12 +127,12 @@ def main() -> None:
 
     gaussian_results: list[tuple[float, float, list[tuple[str, float, float]]]] = []
     for target_y in TARGET_Y_MM:
-        out_path = OUT_DIR / f"lateral_profile_y{300-target_y:g}mm.png"
+        out_path = OUT_DIR / f"lateral_profile_y{300-target_y:g}mm_NEWDATA.png"
         title = f"Mean concentration lateral profile at y = {300 - target_y:g} mm"
         plot_lateral_profiles(
             cases_loaded,
-            x_coords=x_coords,
-            y_coords=y_coords,
+            x_coords_loaded,
+            y_coords_loaded,
             target_y=target_y,
             out_path=out_path,
             title=title,
@@ -125,8 +154,8 @@ def main() -> None:
         print(f"Saved lateral profile plot for y={300-target_y} mm to {out_path}")
         params_at_y, y_match = compute_gaussian_params_at_y(
             cases_loaded,
-            x_coords=x_coords,
-            y_coords=y_coords,
+            x_coords_loaded,
+            y_coords_loaded,
             target_y=target_y,
             normalize_to_max=NORMALIZE_TO_MAX,
             xlim=XLIM,
@@ -135,8 +164,8 @@ def main() -> None:
         )
         gaussian_results.append((target_y, y_match, params_at_y))
 
-    mu_out = OUT_DIR / "gaussian_mu_across_cases.png"
-    sigma_out = OUT_DIR / "gaussian_sigma_across_cases.png"
+    mu_out = OUT_DIR / "gaussian_mu_across_cases_NEWDATA.png"
+    sigma_out = OUT_DIR / "gaussian_sigma_across_cases_NEWDATA.png"
     plot_gaussian_param_scatter(
         gaussian_results,
         param="mu",

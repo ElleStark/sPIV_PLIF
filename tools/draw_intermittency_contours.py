@@ -24,10 +24,10 @@ from src.sPIV_PLIF_postprocessing.analysis import compute_intermittency
 
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
-CASE_NAME = "baseline"
-CONCENTRATION_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/plif_{CASE_NAME}_smoothed.npy")
-X_COORDS_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
-Y_COORDS_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/y_coords.npy")
+CASE_NAME = "smSource"
+CONCENTRATION_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_PLIF.npy")
+X_COORDS_PATH: Path | None = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_xgrid.npy")
+Y_COORDS_PATH: Path | None = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_ygrid.npy")
 OUT_INTERMITTENCY_PATH: Path | None = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Intermittency/intermittency_{CASE_NAME}.npy")
 LOAD_INTERMITTENCY_PATH: Path | None = None  # set to None to force recompute
 OUT_FIG_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Intermittency/intermittency_contours_{CASE_NAME}.png")
@@ -64,12 +64,14 @@ def main() -> None:
         conc_stack = np.load(CONCENTRATION_PATH)
         if conc_stack.ndim != 3:
             raise ValueError(f"Expected concentration stack with shape (y, x, t); got {conc_stack.shape}")
-        intermittency = compute_intermittency(conc_stack, THRESHOLD, axis=2, percent=False)
+        intermittency = compute_intermittency(conc_stack, THRESHOLD, axis=0, percent=False)
 
-    ny, nx = intermittency.shape
-    x_coords = _load_coords(X_COORDS_PATH, nx, "x")
-    y_coords = _load_coords(Y_COORDS_PATH, ny, "y")
-    X, Y = np.meshgrid(x_coords, y_coords, indexing="xy")
+    # ny, nx = intermittency.shape
+    # x_coords = _load_coords(X_COORDS_PATH, nx, "x")
+    # y_coords = _load_coords(Y_COORDS_PATH, ny, "y")
+    # X, Y = np.meshgrid(x_coords, y_coords, indexing="xy")
+    X = np.load(X_COORDS_PATH)
+    Y = np.load(Y_COORDS_PATH)
 
     if OUT_INTERMITTENCY_PATH is not None:
         OUT_INTERMITTENCY_PATH.parent.mkdir(parents=True, exist_ok=True)

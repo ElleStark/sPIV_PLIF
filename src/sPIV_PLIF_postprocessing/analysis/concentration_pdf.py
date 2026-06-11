@@ -19,12 +19,12 @@ def concentration_timeseries_from_file(
     """
     Load a concentration stack and return the time series at (y_idx, x_idx).
 
-    The concentration file is expected to be shaped (y, x, t).
+    The concentration file is expected to be shaped (t, y, x).
     """
     arr = np.load(path, mmap_mode=mmap_mode)
     if arr.ndim != 3:
-        raise ValueError(f"Expected concentration stack with shape (y, x, t); got {arr.shape}")
-    return np.asarray(arr[y_idx, x_idx, t_slice])
+        raise ValueError(f"Expected concentration stack with shape (t, y, x); got {arr.shape}")
+    return np.asarray(arr[t_slice, y_idx, x_idx])
 
 
 def compute_concentration_pdf(

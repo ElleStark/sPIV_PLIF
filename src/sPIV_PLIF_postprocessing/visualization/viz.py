@@ -601,8 +601,8 @@ def _nearest_index(values: Sequence[float], target: float) -> tuple[int, float]:
 
 def compute_gaussian_params_at_y(
     cases: Sequence[tuple[str, np.ndarray]],
-    x_coords: Sequence[float],
-    y_coords: Sequence[float],
+    x_coords_dict: dict[str, np.ndarray],
+    y_coords_dict: dict[str, np.ndarray],
     target_y: float,
     *,
     normalize_to_max: bool = False,
@@ -618,21 +618,38 @@ def compute_gaussian_params_at_y(
     if len(cases) == 0:
         raise ValueError("No cases provided for Gaussian parameter extraction.")
 
-    y_idx, y_match = _nearest_index(y_coords, target_y)
-    row_start = max(0, y_idx - rows_to_average)
-    row_end = min(len(y_coords), y_idx + rows_to_average + 1)
-    if row_end <= row_start:
-        raise ValueError(f"Invalid averaging window for y index {y_idx}")
+    # y_idx, y_match = _nearest_index(y_coords, target_y)
+    # row_start = max(0, y_idx - rows_to_average)
+    # row_end = min(len(y_coords), y_idx + rows_to_average + 1)
+    # if row_end <= row_start:
+    #     raise ValueError(f"Invalid averaging window for y index {y_idx}")
 
-    x_coords_arr = np.asarray(x_coords)
-    x_range_mask: Optional[np.ndarray] = None
-    if xlim is not None:
-        x_range_mask = (x_coords_arr >= xlim[0]) & (x_coords_arr <= xlim[1])
-        if not np.any(x_range_mask):
-            raise ValueError(f"No x points fall within requested xlim {xlim}.")
+    # x_coords_arr = np.asarray(x_coords)
+    # x_range_mask: Optional[np.ndarray] = None
+    # if xlim is not None:
+    #     x_range_mask = (x_coords_arr >= xlim[0]) & (x_coords_arr <= xlim[1])
+    #     if not np.any(x_range_mask):
+    #         raise ValueError(f"No x points fall within requested xlim {xlim}.")
 
     results: list[tuple[str, float, float]] = []
     for label, c_mean in cases:
+
+        x_coords = x_coords_dict[label]
+        y_coords = y_coords_dict[label]
+
+        y_idx, y_match = _nearest_index(y_coords, target_y)
+        row_start = max(0, y_idx - rows_to_average)
+        row_end = min(len(y_coords), y_idx + rows_to_average + 1)
+        if row_end <= row_start:
+            raise ValueError(f"Invalid averaging window for y index {y_idx}")
+        x_coords_arr = np.asarray(x_coords)
+        # print(f"x_coords array: size = {x_coords_arr.shape}, min = {np.min(x_coords_arr)}, max = {np.max(x_coords_arr)}")
+        x_range_mask: Optional[np.ndarray] = None
+        if xlim is not None:
+            x_range_mask = (x_coords_arr >= xlim[0]) & (x_coords_arr <= xlim[1])
+            if not np.any(x_range_mask):
+                raise ValueError(f"No x points fall within requested xlim {xlim}.")
+
         if c_mean.ndim != 2:
             raise ValueError(f"{label} mean concentration must be 2D (y, x); got shape {c_mean.shape}")
         if c_mean.shape != (len(y_coords), len(x_coords)):
@@ -762,7 +779,7 @@ def plot_gaussian_param_scatter(
     param_label = "mu" if param == "mu" else "sigma"
     ax.set_ylabel(ylabel if ylabel is not None else f"Gaussian {param_label}")
     if param == "mu":
-        ax.set_ylim(-10.0, 10.0)
+        ax.set_ylim(-7.5, 7.5)
     if title:
         ax.set_title(title)
     ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.6)
@@ -782,8 +799,8 @@ def plot_gaussian_param_scatter(
 
 def plot_lateral_profiles(
     cases: Sequence[tuple[str, np.ndarray]],
-    x_coords: Sequence[float],
-    y_coords: Sequence[float],
+    x_coords_dict: dict[str, np.ndarray],
+    y_coords_dict: dict[str, np.ndarray],
     target_y: float,
     *,
     out_path: Path,
@@ -815,7 +832,7 @@ def plot_lateral_profiles(
     cases
         Sequence of (label, c_mean_array) pairs. Arrays must be 2D (y, x).
     x_coords, y_coords
-        Coordinate arrays matching the dimensions of the mean fields.
+        Sequences of (label, coordinate array) matching the dimensions of the mean fields.
     target_y
         Downstream distance (same units as y_coords) at which to extract the profile.
     rows_to_average
@@ -829,20 +846,26 @@ def plot_lateral_profiles(
     if len(cases) == 0:
         raise ValueError("No cases provided for plotting.")
 
-    y_idx, y_match = _nearest_index(y_coords, target_y)
-    row_start = max(0, y_idx - rows_to_average)
-    row_end = min(len(y_coords), y_idx + rows_to_average + 1)
-    if row_end <= row_start:
-        raise ValueError(f"Invalid averaging window for y index {y_idx}")
-    x_coords_arr = np.asarray(x_coords)
-    x_range_mask: Optional[np.ndarray] = None
-    if xlim is not None:
-        x_range_mask = (x_coords_arr >= xlim[0]) & (x_coords_arr <= xlim[1])
-        if not np.any(x_range_mask):
-            raise ValueError(f"No x points fall within requested xlim {xlim}.")
+
 
     profiles: list[tuple[str, np.ndarray]] = []
     for label, c_mean in cases:
+        x_coords = x_coords_dict[label]
+        y_coords = y_coords_dict[label]
+
+        y_idx, y_match = _nearest_index(y_coords, target_y)
+        row_start = max(0, y_idx - rows_to_average)
+        row_end = min(len(y_coords), y_idx + rows_to_average + 1)
+        if row_end <= row_start:
+            raise ValueError(f"Invalid averaging window for y index {y_idx}")
+        x_coords_arr = np.asarray(x_coords)
+        # print(f"x_coords array: size = {x_coords_arr.shape}, min = {np.min(x_coords_arr)}, max = {np.max(x_coords_arr)}")
+        x_range_mask: Optional[np.ndarray] = None
+        if xlim is not None:
+            x_range_mask = (x_coords_arr >= xlim[0]) & (x_coords_arr <= xlim[1])
+            if not np.any(x_range_mask):
+                raise ValueError(f"No x points fall within requested xlim {xlim}.")
+
         if c_mean.ndim != 2:
             raise ValueError(f"{label} mean concentration must be 2D (y, x); got shape {c_mean.shape}")
         if c_mean.shape != (len(y_coords), len(x_coords)):

@@ -23,15 +23,17 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 # -------------------------------------------------------------------
 # Edit these paths/settings for desired dataset
 # MEAN_FIELDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_baseline.npz")
-MEAN_U_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_variance_fields/baseline_u_mean.npy")
-MEAN_V_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_variance_fields/baseline_v_mean.npy")
-MEAN_C_PATH = Path("E:/sPIV_PLIF_ProcessedData/mean_fields/baseline_PLIF_mean.npy")
-OUT_PATH = Path("E:/sPIV_PLIF_ProcessedData/Plots/Mean/mean_baseline_velocity.png")
-CMIN = 0.0
+CASE_NAME = "baseline"
+
+MEAN_U_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/mean_variance_fields/{CASE_NAME}_u_mean.npy")
+MEAN_V_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/mean_variance_fields/{CASE_NAME}_v_mean.npy")
+MEAN_C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/mean_fields/{CASE_NAME}_PLIF_mean.npy")
+OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Mean/mean_{CASE_NAME}_02.png")
+CMIN = 0.02
 CMAX = 1.0
-X_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/PLIF/baseline_xgrid.npy")
-Y_PATH: Path | None = Path("E:/sPIV_PLIF_ProcessedData/PLIF/baseline_ygrid.npy")
-LOG_SCALE = False  # velocity magnitude usually plotted linearly
+X_PATH: Path | None = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_xgrid.npy")
+Y_PATH: Path | None = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_ygrid.npy")
+LOG_SCALE = True  # velocity magnitude usually plotted linearly
 CMAP_NAME = "jet"  # perceptually uniform for velocity magnitude
 CMAP_SLICE = (0.0, 1.0)
 C_UNDER: str | None = "white"  # fade in from white
@@ -50,7 +52,7 @@ C_UNDER_END: float | None = 0.01
 PCOLORMESH_ALPHA = 1  # reduce saturation/opacity of the magnitude field
 APPLY_MEDIAN_SMOOTH = False
 MEDIAN_WINDOW = 9  # pixels
-X_SUBSET: tuple[float, float] | None = None
+X_SUBSET: tuple[float, float] | None = [-100, 100]
 Y_SUBSET: tuple[float, float] | None = None
 CONTOUR_LEVELS: int | list[float] | None = None  # disable contours
 CONTOUR_COLOR = "#555555"
@@ -70,13 +72,13 @@ QUIVER_COLORBAR = True
 QUIVER_ALPHA = 1.0
 QUIVER_VMIN: float | None = 0.1  # set to fix arrow color scale
 QUIVER_VMAX: float | None = 0.5  # set to match instantaneous overlay max
-STRIDE_ROWS = 8  # stride along array rows (y dimension)
-STRIDE_COLS = 6  # stride along array columns (x dimension)
-QUIVER_SCALE = 0.06  # increase to shorten arrows
-QUIVER_HEADWIDTH = 3.0  # width of the arrow head
-QUIVER_HEADLENGTH = 4.0  # length of the arrow head
-QUIVER_HEADAXISLENGTH = 4.0  # length of the arrow head axis
-QUIVER_TAILWIDTH = 0.006  # width of the arrow tail
+STRIDE_ROWS = 38  # stride along array rows (y dimension)
+STRIDE_COLS = 35  # stride along array columns (x dimension)
+QUIVER_SCALE = 0.035  # increase to shorten arrows
+QUIVER_HEADWIDTH = 4.0  # width of the arrow head
+QUIVER_HEADLENGTH = 4  # length of the arrow head
+QUIVER_HEADAXISLENGTH = 3  # length of the arrow head axis
+QUIVER_TAILWIDTH = 0.004  # width of the arrow tail
 
 
 def _median_smooth(arr: np.ndarray, k: int) -> np.ndarray:
@@ -164,18 +166,20 @@ def main() -> None:
     u_mean = np.load(MEAN_U_PATH)
     v_mean = np.load(MEAN_V_PATH)
     C = np.load(MEAN_C_PATH)
+    print(C.shape)
     C = _median_smooth(C, MEDIAN_WINDOW) if APPLY_MEDIAN_SMOOTH else C
 
 
     x_coords = np.load(X_PATH) if X_PATH else None
-    x_coords = x_coords[:, 0]
+    # print(f'x dims: {x_coords.shape}')
+    x_coords = x_coords[0, :]
     y_coords = np.load(Y_PATH) if Y_PATH else None
-    y_coords = y_coords[0, :]
+    y_coords = y_coords[:, 0]
     if X_SUBSET is not None or Y_SUBSET is not None:
-        u_mean, v_mean, speed_mean, x_coords, y_coords = _subset_xy(
+        u_mean, v_mean, C, x_coords, y_coords = _subset_xy(
             u_mean,
             v_mean,
-            speed_mean,
+            C,
             x_coords,
             y_coords,
             X_SUBSET,

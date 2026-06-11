@@ -28,10 +28,12 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import compute_gaussian_para
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "fractal"
-CONCENTRATION_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/plif_{CASE_NAME}_smoothed.npy")
-Y_IDX = 400  # row index in the concentration array
-X_IDX = 360  # column index in the concentration array
+CASE_NAME = "baseline"
+CONCENTRATION_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_PLIF.npy")
+X_COORDS_PATH: Path | None = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_xgrid.npy")
+Y_COORDS_PATH: Path | None = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_ygrid.npy")
+Y_IDX = 947-315 # row index in the concentration array
+X_IDX = 537  # column index in the concentration array
 AUTO_X_FROM_GAUSS = False  # set True to override X_IDX using Gaussian fit (centerline ± sigma)
 MEAN_FIELD_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/mean_fields/mean_fields_{CASE_NAME}.npz")
 X_COORDS_PATH = Path("E:/sPIV_PLIF_ProcessedData/x_coords.npy")
@@ -41,11 +43,12 @@ GAUSS_ROWS_TO_AVERAGE = 10
 GAUSS_FIT_X_RANGE = (-50.0, 100.0)
 GAUSS_USE_CENTER_PLUS_SIGMA = True  # if True pick mu + sigma; if False pick mu - sigma; set both False to use mu
 T_SLICE = slice(0, 6000)  # time frames to include; set to None for all
-BIN_WIDTH = 0.0065  # concentration bin width
+# BIN_WIDTH = 0.007  # concentration bin width
+BIN_WIDTH = 0.025
 PDF_RANGE: tuple[float, float] | None = None  # e.g., (0.0, 0.1) or None to auto; if None, range comes from data
 OUT_DIR = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/ConcentrationPDF")
-XLIM = (0.0, 0.15)
-YLIM = (0.0, 35.0)
+XLIM = (0.0, 0.75)
+YLIM = (0.0, 11.0)
 GAMMA_POINTS = 500  # number of x-points for smooth gamma overlay
 Y_LEGEND = False  # set to True to show legend on plot
 # -------------------------------------------------------------------
@@ -100,14 +103,15 @@ def main() -> None:
     if PDF_RANGE is not None:
         c_min, c_max = PDF_RANGE
     else:
-        c_min, c_max = float(np.min(finite)), float(np.max(finite))
+        # c_min, c_max = float(np.min(finite)), float(np.max(finite))
+        c_min, c_max = 0, float(np.max(finite))
     edges = np.arange(c_min, c_max + BIN_WIDTH, BIN_WIDTH)
     if edges[-1] < c_max:
         edges = np.append(edges, c_max)
     centers, pdf, edges = compute_concentration_pdf(ts, bins=edges, value_range=None)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    pdf_path = OUT_DIR / f"concentration_pdf_{CASE_NAME}_y{(600-Y_IDX)/20}_x{(x_idx-300)/20}.npz"
+    pdf_path = OUT_DIR / f"concentration_pdf_{CASE_NAME}_y{(947-Y_IDX)*0.317}_x{(x_idx-473.5)*0.317}.npz"
     np.savez(
         pdf_path,
         bin_centers=centers,
@@ -123,7 +127,7 @@ def main() -> None:
         bin_width=BIN_WIDTH,
     )
 
-    fig_path = OUT_DIR / f"concentration_pdf_{CASE_NAME}_y{(600-Y_IDX)/20}_x{(x_idx-300)/20}.png"
+    fig_path = OUT_DIR / f"concentration_pdf_{CASE_NAME}_y{(947-Y_IDX)*0.317}_x{(x_idx-473.5)*0.317}.png"
     # Plot as histogram (bars) to show probability density
     import matplotlib.pyplot as plt
 
@@ -142,7 +146,7 @@ def main() -> None:
 
     ax.set_xlabel("Concentration")
     ax.set_ylabel("Probability density")
-    ax.set_title(f"Concentration PDF at (y={(600-Y_IDX)/20}, x={(x_idx-300)/20})")
+    ax.set_title(f"Concentration PDF at (y={(947-Y_IDX)*0.317}, x={(x_idx-473.5)*0.317})")
     ax.set_xlim(*XLIM)
     ax.set_ylim(*YLIM)
     if Y_LEGEND:

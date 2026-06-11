@@ -11,7 +11,7 @@ def compute_intermittency(
     concentration: np.ndarray,
     threshold: float,
     *,
-    axis: int = 2,
+    axis: int = 0,
     percent: bool = True,
 ) -> np.ndarray:
     """
