@@ -1,28 +1,38 @@
 from pathlib import Path
 import numpy as np
 
-# Make imports work when run as a standalone script (python src/.../vc7_qc.py)
-try:
-    from src.sPIV_PLIF_postprocessing.visualization.viz import quiver_from_npy
-    from src.sPIV_PLIF_postprocessing.io.readwrite_vc7_to_npy import TARGET_X, TARGET_Y
-except ImportError:
-    import sys
-    sys.path.append(str(Path(__file__).resolve().parents[2]))
-    from src.sPIV_PLIF_postprocessing.visualization.viz import quiver_from_npy
-    from src.sPIV_PLIF_postprocessing.io.readwrite_vc7_to_npy import TARGET_X, TARGET_Y
+# # Make imports work when run as a standalone script (python src/.../vc7_qc.py)
+# try:
+#     from src.sPIV_PLIF_postprocessing.visualization.viz import quiver_from_npy
+#     from src.sPIV_PLIF_postprocessing.io.readwrite_vc7_to_npy import TARGET_X, TARGET_Y
+# except ImportError:
+#     import sys
+#     sys.path.append(str(Path(__file__).resolve().parents[2]))
+#     from src.sPIV_PLIF_postprocessing.visualization.viz import quiver_from_npy
+#     from src.sPIV_PLIF_postprocessing.io.readwrite_vc7_to_npy import TARGET_X, TARGET_Y
 
 # paths to the u and v velocity fields
-u_path = Path('I:/Processed_Data/PIV/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_u.npy')
-v_path = Path('I:/Processed_Data/PIV/8.29_30cmsPWM2.25_FractalTG15cm_noHC_PIVairQ0.02_Neu49pctHe0.897_51pctair0.917_Iso_v.npy')
-c_path = Path('I:/Processed_Data/PLIF/plif_baseline.npy')
+# u_path = Path('E:/sPIV_PLIF_ProcessedData/PIV/Interpolated_to_PLIF/piv_diffusive_u.npy')
+# v_path = Path('E:/sPIV_PLIF_ProcessedData/PIV/Interpolated_to_PLIF/piv_diffusive_v.npy')
+w_path = Path('E:/sPIV_PLIF_ProcessedData/PIV/Interpolated_to_PLIF/piv_smSource_w.npy')
+# c_path = Path('I:/Processed_Data/PLIF/plif_baseline.npy')
 
-print(f'u dimensions: {np.load(u_path).shape}')
-print(f'v dimensions: {np.load(v_path).shape}')
-print(f'c dimensions: {np.load(c_path).shape}')
+# print(f'u dimensions: {np.load(u_path).shape}')
+# print(f'v dimensions: {np.load(v_path).shape}')
+print(f'w dimensions: {np.load(w_path).shape}')
 
-# # v = np.load(v_path)
-# # v = np.flipud(v)  # flip the v velocity field 
-# # np.save(v_path, v)  # save the flipped v velocity field back to the same file
+# u = np.load(u_path)
+# u = np.transpose(u, [2, 0, 1])  # flip the u velocity field 
+# np.save(u_path, u)  # save the flipped velocity field back to the same file
+
+# v = np.load(v_path)
+# v = np.transpose(v, [2, 0, 1]) # flip the v velocity field 
+# np.save(v_path, v)  # save the flipped velocity field back to the same file
+
+w = np.load(w_path)
+w = np.transpose(w, [2, 0, 1])  # flip the w velocity field 
+np.save(w_path, w)  # save the flipped velocity field back to the same file
+
 
 # # plotting parameters
 # frame_idx = 2

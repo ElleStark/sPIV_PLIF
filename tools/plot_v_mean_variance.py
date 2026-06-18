@@ -24,7 +24,7 @@ if str(SRC_ROOT) not in sys.path:
 # Edit these paths/settings for your dataset
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 CASE_NAMES = ["smSource", "nearbed", "fractal", "diffusive", "buoyant", "baseline"]
-# CASE_NAMES = ["baseline"]  # for testing
+# CASE_NAMES = ["diffusive", "nearbed"]  # for testing
 PIV_DIR = BASE_PATH / "PIV/Interpolated_to_PLIF"
 OUT_DIR = BASE_PATH / "Plots" / "v_stats" 
 X_COORDS_PATH:  Path | None = BASE_PATH / "PLIF"
@@ -122,7 +122,7 @@ def main() -> None:
         x_coords_full = _load_coords(X_COORDS_PATH / f"{case}_xgrid.npy", X_SLICE)
         y_coords_full = _load_coords(Y_COORDS_PATH / f"{case}_ygrid.npy", Y_SLICE)
         print(f"[info] processing case '{case}' with x coords {x_coords_full.shape} and y coords {y_coords_full.shape}")
-        v_path = PIV_DIR / f"piv_{case}_u.npy"
+        v_path = PIV_DIR / f"piv_{case}_w.npy"
         if not v_path.exists():
             print(f"[skip] missing v file for case '{case}': {v_path}")
             continue
@@ -140,13 +140,13 @@ def main() -> None:
             mean_vmin = MEAN_VMIN
             mean_vmax = MEAN_VMAX
 
-        mean_out = OUT_DIR / f"u_mean_{case}.png"
-        var_out = OUT_DIR / f"u_var_{case}.png"
+        mean_out = OUT_DIR / f"w_mean_{case}.png"
+        var_out = OUT_DIR / f"w_var_{case}.png"
         print(f" mean velocity dimensions: {v_mean.shape}, variance dimensions: {v_var.shape}")
 
         _plot_field(
             v_mean,
-            title=f"Mean horizontal velocity (u): {case}",
+            title=f"Mean horizontal velocity (w): {case}",
             out_path=mean_out,
             cmap=MEAN_CMAP,
             vmin=mean_vmin,
@@ -154,11 +154,11 @@ def main() -> None:
             x_coords=x_coords_full,
             y_coords=y_coords_full,
             log_scale=False,
-            cbar_label="u mean",
+            cbar_label="v mean",
         )
         _plot_field(
             v_var,
-            title=f"Horizontal velocity variance (u): {case}",
+            title=f"Horizontal velocity variance (w): {case}",
             out_path=var_out,
             cmap=VAR_CMAP,
             vmin=VAR_VMIN,
@@ -166,13 +166,13 @@ def main() -> None:
             x_coords=x_coords_full,
             y_coords=y_coords_full,
             log_scale=VAR_LOG_SCALE,
-            cbar_label="u variance",
+            cbar_label="v variance",
         )
 
         if SAVE_ARRAYS:
             ARRAY_OUT_DIR.mkdir(parents=True, exist_ok=True)
-            np.save(ARRAY_OUT_DIR / f"{case}_u_mean.npy", v_mean)
-            np.save(ARRAY_OUT_DIR / f"{case}_u_var.npy", v_var)
+            np.save(ARRAY_OUT_DIR / f"{case}_w_mean.npy", v_mean)
+            np.save(ARRAY_OUT_DIR / f"{case}_w_var.npy", v_var)
 
         print(f"[ok] saved mean/variance plots for case '{case}' to {OUT_DIR}")
 
