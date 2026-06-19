@@ -31,9 +31,9 @@ def load_velocity_components(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load u, v, w components with slicing applied."""
     base = Path(base_path)
-    u = np.load(base / "PIV" / f"piv_{case_name}_u.npy", mmap_mode=mmap_mode)[x_slice, y_slice, t_slice]
-    v = np.load(base / "PIV" / f"piv_{case_name}_v.npy", mmap_mode=mmap_mode)[x_slice, y_slice, t_slice]
-    w = np.load(base / "PIV" / f"piv_{case_name}_w.npy", mmap_mode=mmap_mode)[x_slice, y_slice, t_slice]
+    u = np.load(base / "PIV" / "Interpolated_to_PLIF" / f"piv_{case_name}_u.npy", mmap_mode=mmap_mode)[x_slice, y_slice, t_slice]
+    v = np.load(base / "PIV" / "Interpolated_to_PLIF" / f"piv_{case_name}_v.npy", mmap_mode=mmap_mode)[x_slice, y_slice, t_slice]
+    w = np.load(base / "PIV" / "Interpolated_to_PLIF" / f"piv_{case_name}_w.npy", mmap_mode=mmap_mode)[x_slice, y_slice, t_slice]
     return u, v, w
 
 
@@ -45,8 +45,13 @@ def load_mean_velocity_components(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load mean u, v, w components from the mean_fields archive."""
     base = Path(base_path)
-    mean_fields = np.load(base / "mean_fields" / f"mean_fields_{case_name}.npz", mmap_mode=mmap_mode)
-    return mean_fields["u"], mean_fields["v"], mean_fields["w"]
+    # mean_fields = np.load(base / "mean_fields" / f"mean_fields_{case_name}.npz", mmap_mode=mmap_mode)
+    # return mean_fields["u"], mean_fields["v"], mean_fields["w"]
+    u_mean_field = np.load(base / "mean_variance_fields" / f"{case_name}_u_mean.npy", mmap_mode=mmap_mode)
+    v_mean_field = np.load(base / "mean_variance_fields" / f"{case_name}_v_mean.npy", mmap_mode=mmap_mode)
+    w_mean_field = np.load(base / "mean_variance_fields" / f"{case_name}_w_mean.npy", mmap_mode=mmap_mode)
+
+    return u_mean_field, v_mean_field, w_mean_field
 
 
 def compute_fluctuating_components(
@@ -59,15 +64,16 @@ def compute_fluctuating_components(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Decompose velocity fields into fluctuating components."""
     if u.ndim == 3 and u_mean.ndim == 2:
-        u_mean = u_mean[:, :, None]
+        u_mean = u_mean[None, :, :]
     if v.ndim == 3 and v_mean.ndim == 2:
-        v_mean = v_mean[:, :, None]
+        v_mean = v_mean[None, :, :]
     if w.ndim == 3 and w_mean.ndim == 2:
-        w_mean = w_mean[:, :, None]
+        w_mean = w_mean[None, :, :]
 
     u_flx = u - u_mean
     v_flx = v - v_mean
     w_flx = w - w_mean
+    w_flx[w_flx<(-1)] = np.nan
     return u_flx, v_flx, w_flx
 
 
@@ -84,10 +90,10 @@ def compute_fluctuating_strain_rates(
     Returns:
         duflx_dx, dvflx_dy, dwflx_dz
     """
-    duflx_dx = np.gradient(u_flx, dx, axis=0)
+    duflx_dx = np.gradient(u_flx, dx, axis=1)
     duflx_dx = np.asarray(duflx_dx)
 
-    dvflx_dy = np.gradient(v_flx, dx, axis=1)
+    dvflx_dy = np.gradient(v_flx, dx, axis=2)
     dvflx_dy = np.asarray(dvflx_dy)
 
     dwflx_dz = 0 - duflx_dx - dvflx_dy  # from continuity equation
@@ -104,7 +110,7 @@ def compute_viscous_dissipation(
 ) -> np.ndarray:
     """Compute viscous energy dissipation rate."""
     epsilon = 5 * nu * (
-        np.mean(duflx_dx**2, axis=2) + np.mean(dvflx_dy**2, axis=2) + np.mean(dwflx_dz**2, axis=2)
+        np.mean(duflx_dx**2, axis=0) + np.mean(dvflx_dy**2, axis=0) + np.mean(dwflx_dz**2, axis=0)
     )
     return epsilon
 
@@ -118,7 +124,7 @@ def compute_taylor_scales(
     nu: float = DEFAULT_NU,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Compute Taylor microscale, Kolmogorov scales, and Taylor Reynolds number."""
-    avg_rms = np.sqrt((1 / 3) * (np.mean(u_flx**2, axis=2) + np.mean(v_flx**2, axis=2) + np.mean(w_flx**2, axis=2)))
+    avg_rms = np.sqrt((1 / 3) * (np.mean(u_flx**2, axis=0) + np.mean(v_flx**2, axis=0) + np.mean(w_flx**2, axis=0)))
     Taylor_microscale = np.sqrt(15 * nu / epsilon) * avg_rms  # homogeneous isotropic turbulence assumption
     kolmogorov_length_scale = (nu**3 / epsilon) ** 0.25
     kolmogorov_time_scale = (nu / epsilon) ** 0.5
@@ -132,9 +138,9 @@ def compute_turbulent_kinetic_energy(
     w_flx: np.ndarray,
 ) -> np.ndarray:
     """Compute turbulent kinetic energy."""
-    u_mnsq = np.mean(u_flx**2, axis=2)
-    v_mnsq = np.mean(v_flx**2, axis=2)
-    w_mnsq = np.mean(w_flx**2, axis=2)
+    u_mnsq = np.mean(u_flx**2, axis=0)
+    v_mnsq = np.mean(v_flx**2, axis=0)
+    w_mnsq = np.mean(w_flx**2, axis=0)
     tke = 0.5 * (u_mnsq + v_mnsq + w_mnsq)
     return tke, u_mnsq, v_mnsq, w_mnsq
 
@@ -146,7 +152,7 @@ def compute_turbulence_intensity(
     u_mean: float = 0.30,
 ) -> np.ndarray:
     """Compute turbulence intensity using RMS components and mean streamwise velocity."""
-    t_intensity_avg = np.sqrt((1 / 3) * (np.mean(u_flx**2, axis=2) + np.mean(v_flx**2, axis=2) + np.mean(w_flx**2, axis=2))) / u_mean
+    t_intensity_avg = np.sqrt((1 / 3) * (np.mean(u_flx**2, axis=0) + np.mean(v_flx**2, axis=0) + np.mean(w_flx**2, axis=0))) / u_mean
     return t_intensity_avg
 
 

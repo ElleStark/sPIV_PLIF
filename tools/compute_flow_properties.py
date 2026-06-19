@@ -30,14 +30,17 @@ from src.sPIV_PLIF_postprocessing.analysis import (
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "diffusive" 
+CASE_NAME = "smSource" 
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 INTERMITTENCY_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Intermittency/intermittency_{CASE_NAME}.npy")
-X_SLICE = slice(0, 600)
-Y_SLICE = slice(100, 500)
-T_SLICE = slice(0, 6000)
-DX = 0.0005  # m
+X_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_xgrid.npy")
+Y_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_ygrid.npy")
+DX = 0.000317  # m
 DT = 0.05  # sec
+X_SLICE = slice(0, int(300/(1000*DX)))
+Y_SLICE = slice(int(50/(1000*DX)), int(250/(1000*DX)))
+T_SLICE = slice(0, 6000)
+
 NU = 1.5e-5  # kinematic viscosity, m2/s
 INTERMITTENCY_THRESHOLD = 0.02  # concentration threshold used to build intermittency
 PLUME_ENVELOPE_CUTOFF = 0.10  # intermittency >= this value is considered inside the plume envelope
@@ -143,16 +146,16 @@ def main() -> None:
     v_mean = v_mean_full[X_SLICE, Y_SLICE]
     w_mean = w_mean_full[X_SLICE, Y_SLICE]
 
-    u_path = BASE_PATH / "PIV" / f"piv_{CASE_NAME}_u.npy"
-    v_path = BASE_PATH / "PIV" / f"piv_{CASE_NAME}_v.npy"
-    w_path = BASE_PATH / "PIV" / f"piv_{CASE_NAME}_w.npy"
+    u_path = BASE_PATH / "PIV" / "Interpolated_to_PLIF" / f"piv_{CASE_NAME}_u.npy"
+    v_path = BASE_PATH / "PIV" / "Interpolated_to_PLIF" / f"piv_{CASE_NAME}_v.npy"
+    w_path = BASE_PATH / "PIV" / "Interpolated_to_PLIF" / f"piv_{CASE_NAME}_w.npy"
     u_mmap = np.load(u_path, mmap_mode="r")
     v_mmap = np.load(v_path, mmap_mode="r")
     w_mmap = np.load(w_path, mmap_mode="r")
 
-    x_indices = range(*X_SLICE.indices(u_mmap.shape[0]))
-    y_indices = range(*Y_SLICE.indices(u_mmap.shape[1]))
-    t_indices = range(*T_SLICE.indices(u_mmap.shape[2]))
+    x_indices = range(*X_SLICE.indices(u_mmap.shape[1]))
+    y_indices = range(*Y_SLICE.indices(u_mmap.shape[2]))
+    t_indices = range(*T_SLICE.indices(u_mmap.shape[0]))
     if t_indices.step != 1:
         raise ValueError("Chunked processing currently assumes contiguous time slices (step=1)")
     if len(t_indices) == 0:
@@ -176,13 +179,13 @@ def main() -> None:
     strain_dir = BASE_PATH / "flow_properties" / "flx_StrainRates"
     strain_dir.mkdir(parents=True, exist_ok=True)
 
-    u_flx_mm = np.lib.format.open_memmap(flx_dir / f"u_flx_{CASE_NAME}.npy", mode="w+", dtype=u_mmap.dtype, shape=(nx, ny, nt))
-    v_flx_mm = np.lib.format.open_memmap(flx_dir / f"v_flx_{CASE_NAME}.npy", mode="w+", dtype=v_mmap.dtype, shape=(nx, ny, nt))
-    w_flx_mm = np.lib.format.open_memmap(flx_dir / f"w_flx_{CASE_NAME}.npy", mode="w+", dtype=w_mmap.dtype, shape=(nx, ny, nt))
+    u_flx_mm = np.lib.format.open_memmap(flx_dir / f"u_flx_{CASE_NAME}.npy", mode="w+", dtype=u_mmap.dtype, shape=(nt, nx, ny))
+    v_flx_mm = np.lib.format.open_memmap(flx_dir / f"v_flx_{CASE_NAME}.npy", mode="w+", dtype=v_mmap.dtype, shape=(nt, nx, ny))
+    w_flx_mm = np.lib.format.open_memmap(flx_dir / f"w_flx_{CASE_NAME}.npy", mode="w+", dtype=w_mmap.dtype, shape=(nt, nx, ny))
 
-    du_dx_mm = np.lib.format.open_memmap(strain_dir / f"duflx_dx_{CASE_NAME}.npy", mode="w+", dtype=np.float32, shape=(nx, ny, nt))
-    dv_dy_mm = np.lib.format.open_memmap(strain_dir / f"dvflx_dy_{CASE_NAME}.npy", mode="w+", dtype=np.float32, shape=(nx, ny, nt))
-    dw_dz_mm = np.lib.format.open_memmap(strain_dir / f"dwflx_dz_{CASE_NAME}.npy", mode="w+", dtype=np.float32, shape=(nx, ny, nt))
+    du_dx_mm = np.lib.format.open_memmap(strain_dir / f"duflx_dx_{CASE_NAME}.npy", mode="w+", dtype=np.float32, shape=(nt, nx, ny))
+    dv_dy_mm = np.lib.format.open_memmap(strain_dir / f"dvflx_dy_{CASE_NAME}.npy", mode="w+", dtype=np.float32, shape=(nt, nx, ny))
+    dw_dz_mm = np.lib.format.open_memmap(strain_dir / f"dwflx_dz_{CASE_NAME}.npy", mode="w+", dtype=np.float32, shape=(nt, nx, ny))
 
     sum_u2 = np.zeros((nx, ny), dtype=np.float64)
     sum_v2 = np.zeros((nx, ny), dtype=np.float64)
@@ -197,29 +200,29 @@ def main() -> None:
         raw_start = t_indices[t_start]
         raw_stop = t_indices[t_stop - 1] + 1  # exclusive
         chunk_slice = slice(raw_start, raw_stop)
-        u_chunk = np.asarray(u_mmap[X_SLICE, Y_SLICE, chunk_slice])
-        v_chunk = np.asarray(v_mmap[X_SLICE, Y_SLICE, chunk_slice])
-        w_chunk = np.asarray(w_mmap[X_SLICE, Y_SLICE, chunk_slice])
+        u_chunk = np.asarray(u_mmap[chunk_slice, X_SLICE, Y_SLICE])
+        v_chunk = np.asarray(v_mmap[chunk_slice, X_SLICE, Y_SLICE])
+        w_chunk = np.asarray(w_mmap[chunk_slice, X_SLICE, Y_SLICE])
 
         u_flx_chunk, v_flx_chunk, w_flx_chunk = compute_fluctuating_components(u_chunk, v_chunk, w_chunk, u_mean, v_mean, w_mean)
-        chunk_len = u_flx_chunk.shape[2]
-        u_flx_mm[:, :, t_start:t_stop] = u_flx_chunk
-        v_flx_mm[:, :, t_start:t_stop] = v_flx_chunk
-        w_flx_mm[:, :, t_start:t_stop] = w_flx_chunk
+        chunk_len = u_flx_chunk.shape[0]
+        u_flx_mm[t_start:t_stop, :, :] = u_flx_chunk
+        v_flx_mm[t_start:t_stop, :, :] = v_flx_chunk
+        w_flx_mm[t_start:t_stop, :, :] = w_flx_chunk
 
         duflx_dx_chunk, dvflx_dy_chunk, dwflx_dz_chunk = compute_fluctuating_strain_rates(
             u_flx_chunk, v_flx_chunk, dx=DX, dt=DT
         )
-        du_dx_mm[:, :, t_start:t_stop] = duflx_dx_chunk
-        dv_dy_mm[:, :, t_start:t_stop] = dvflx_dy_chunk
-        dw_dz_mm[:, :, t_start:t_stop] = dwflx_dz_chunk
+        du_dx_mm[t_start:t_stop, :, :] = duflx_dx_chunk
+        dv_dy_mm[t_start:t_stop, :, :] = dvflx_dy_chunk
+        dw_dz_mm[t_start:t_stop, :, :] = dwflx_dz_chunk
 
-        sum_u2 += np.sum(u_flx_chunk**2, axis=2)
-        sum_v2 += np.sum(v_flx_chunk**2, axis=2)
-        sum_w2 += np.sum(w_flx_chunk**2, axis=2)
-        sum_du2 += np.sum(duflx_dx_chunk**2, axis=2)
-        sum_dv2 += np.sum(dvflx_dy_chunk**2, axis=2)
-        sum_dw2 += np.sum(dwflx_dz_chunk**2, axis=2)
+        sum_u2 += np.sum(u_flx_chunk**2, axis=0)
+        sum_v2 += np.sum(v_flx_chunk**2, axis=0)
+        sum_w2 += np.sum(w_flx_chunk**2, axis=0)
+        sum_du2 += np.sum(duflx_dx_chunk**2, axis=0)
+        sum_dv2 += np.sum(dvflx_dy_chunk**2, axis=0)
+        sum_dw2 += np.sum(dwflx_dz_chunk**2, axis=0)
         frame_count += chunk_len
 
     u_flx_mm.flush()
@@ -243,7 +246,8 @@ def main() -> None:
     epsilon = 5 * NU * (mean_du2 + mean_dv2 + mean_dw2)
     eps_path = BASE_PATH / "flow_properties" / "Plots"/ f"{CASE_NAME}" /f"epsilon_{CASE_NAME}.npy"
     save_arrays([(eps_path, epsilon)])
-    _plot_field(epsilon, "epsilon", eps_path.with_suffix(".png"), vmin=np.percentile(epsilon, 1), vmax=np.percentile(epsilon, 90), cmap=CMAP)
+    finite_eps = epsilon[np.isfinite(epsilon)]
+    _plot_field(epsilon, "epsilon", eps_path.with_suffix(".png"), vmin=np.percentile(finite_eps, 1), vmax=np.percentile(finite_eps, 99), cmap=CMAP)
     print(f"Saved viscous dissipation to {eps_path}")
     _report_stats("epsilon", epsilon, log=log_lines)
     _report_region_stats("epsilon", epsilon, plume_mask, log=log_lines)
@@ -264,10 +268,10 @@ def main() -> None:
             (BASE_PATH / "flow_properties" / "Plots"/ f"{CASE_NAME}" / f"kolmogorov_time_scale_{CASE_NAME}.npy", kolmogorov_time_scale),
         ]
     )
-    _plot_field(Taylor_microscale, "Taylor microscale", (BASE_PATH / "flow_properties" / "Plots"/ f"{CASE_NAME}" / f"Taylor_microscale_{CASE_NAME}.png"), vmin=0, vmax=np.percentile(Taylor_microscale, 99))
-    _plot_field(Taylor_Re, "Taylor Re", (BASE_PATH / "flow_properties" / "Plots"/ f"{CASE_NAME}" / f"Taylor_Re_{CASE_NAME}.png"), vmin=0, vmax=np.percentile(Taylor_Re, 99))
-    _plot_field(kolmogorov_length_scale, "Kolmogorov length scale", (BASE_PATH / "flow_properties" / "Plots"/ f"{CASE_NAME}" / f"kolmogorov_length_scale_{CASE_NAME}.png"), vmin=0, vmax=np.percentile(kolmogorov_length_scale, 99))
-    _plot_field(kolmogorov_time_scale, "Kolmogorov time scale", (BASE_PATH / "flow_properties" / "Plots"/ f"{CASE_NAME}" / f"kolmogorov_time_scale_{CASE_NAME}.png"), vmin=0, vmax=np.percentile(kolmogorov_time_scale, 99))
+    _plot_field(Taylor_microscale, "Taylor microscale", (BASE_PATH / "flow_properties" / "Plots"/ f"{CASE_NAME}" / f"Taylor_microscale_{CASE_NAME}.png"), vmin=0, vmax=np.percentile(Taylor_microscale[np.isfinite(Taylor_microscale)], 99))
+    _plot_field(Taylor_Re, "Taylor Re", (BASE_PATH / "flow_properties" / "Plots"/ f"{CASE_NAME}" / f"Taylor_Re_{CASE_NAME}.png"), vmin=0, vmax=np.percentile(Taylor_Re[np.isfinite(Taylor_Re)], 99))
+    _plot_field(kolmogorov_length_scale, "Kolmogorov length scale", (BASE_PATH / "flow_properties" / "Plots"/ f"{CASE_NAME}" / f"kolmogorov_length_scale_{CASE_NAME}.png"), vmin=0, vmax=np.percentile(kolmogorov_length_scale[np.isfinite(kolmogorov_length_scale)], 99))
+    _plot_field(kolmogorov_time_scale, "Kolmogorov time scale", (BASE_PATH / "flow_properties" / "Plots"/ f"{CASE_NAME}" / f"kolmogorov_time_scale_{CASE_NAME}.png"), vmin=0, vmax=np.percentile(kolmogorov_time_scale[np.isfinite(kolmogorov_time_scale)], 99))
     _report_stats("Taylor microscale", Taylor_microscale, log=log_lines)
     _report_region_stats("Taylor microscale", Taylor_microscale, plume_mask, log=log_lines)
     _report_stats("Taylor Re", Taylor_Re, log=log_lines)
@@ -282,7 +286,7 @@ def main() -> None:
     tke = 0.5 * (u_mnsq + v_mnsq + w_mnsq)
     tke_path = BASE_PATH / "flow_properties" / "Plots"/ f"{CASE_NAME}" /f"tke_{CASE_NAME}.npy"
     save_arrays([(tke_path, tke)])
-    _plot_field(tke, "TKE", tke_path.with_suffix(".png"), vmin=0, vmax=np.percentile(tke, 99), cmap=CMAP)
+    _plot_field(tke, "TKE", tke_path.with_suffix(".png"), vmin=0, vmax=np.percentile(tke[np.isfinite(tke)], 99), cmap=CMAP)
     x_tke, tke_profile = _plot_line_along_x(
         tke,
         f"Mean TKE along x (avg over y, binned x={BINSIZE})",
