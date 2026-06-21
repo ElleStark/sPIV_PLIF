@@ -3,7 +3,7 @@ Compute and plot turbulent scalar fluxes c'u', c'v', and c'w' for a given case.
 
 Fluxes are computed as time averages of the products between fluctuating concentration
 and fluctuating velocity components. Velocity fluctuations are loaded from
-E:/sPIV_PLIF_ProcessedData/flow_properties/flx_u_v_w/*_flx_{CASE}_FINAL_AllTimeSteps.npy.
+E:/sPIV_PLIF_ProcessedData/flow_properties/flx_u_v_w/*_flx_{CASE}.npy.
 Concentration fluctuations come from the PLIF stack.
 
 The plot shows a quiver of <c'u'> and <c'v'> with shading by |<c'v'>,<c'u'>|.
@@ -34,15 +34,17 @@ from src.sPIV_PLIF_postprocessing.analysis.flow_properties import load_mean_velo
 # Edit these settings for your dataset
 CASE_NAME = "nearbed" 
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
-CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"plif_{CASE_NAME}_smoothed.npy"
-U_PATH = BASE_PATH / "PIV" / f"piv_{CASE_NAME}_u.npy"  # used only for total fluxes, not turbulent fluxes
-V_PATH = BASE_PATH / "PIV" / f"piv_{CASE_NAME}_v.npy"  # used only for total fluxes, not turbulent fluxes
+CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"{CASE_NAME}_PLIF.npy"
+U_PATH = BASE_PATH / "PIV" / "Interpolated_to_PLIF" / f"piv_{CASE_NAME}_u.npy"  # used only for total fluxes, not turbulent fluxes
+V_PATH = BASE_PATH / "PIV" / "Interpolated_to_PLIF" / f"piv_{CASE_NAME}_v.npy"  # used only for total fluxes, not turbulent fluxes
 FLX_DIR = BASE_PATH / "flow_properties" / "flx_u_v_w"
-X_SLICE = slice(0, 600)
-CONC_Y_SLICE = slice(100, 500)  # apply to concentration to align with velocity trim
-VEL_Y_SLICE = slice(None)  # velocity fluctuations already trimmed in y; keep all
-T_SLICE = slice(0, 500)
-QUIVER_STEP = 15  # subsample for quiver display
+DX = 0.317 # mm
+X_SLICE = slice(0, int(300/DX))
+CONC_Y_SLICE = slice(int(50/DX), int(250/DX))  # apply to concentration to align with velocity trim
+# VEL_Y_SLICE = slice(int(50/DX), int(250/DX))  
+VEL_Y_SLICE = slice(None)
+T_SLICE = slice(0, 6000)
+QUIVER_STEP = 25  # subsample for quiver display
 OUT_DIR = BASE_PATH / "flow_properties" / "scalar_fluxes"
 MEAN_X_SLICE = X_SLICE
 MEAN_Y_SLICE = CONC_Y_SLICE
@@ -50,34 +52,39 @@ XLABEL = "x index"
 YLABEL = "y index"
 MAG_CMAP = cmr.get_sub_cmap(cmr.rainforest_r, 0, 0.6)
 TURB_QUIVER_MAG_THRESHOLD = 0.00005  # turbulent flux quiver threshold
-ADV_QUIVER_MAG_THRESHOLD = 0.001  # advective flux quiver threshold
-TOTAL_QUIVER_MAG_THRESHOLD = 0.0012 # total flux quiver threshold
-QUIVER_LENGTH = 16.0  # constant arrow length in axis units
+ADV_QUIVER_MAG_THRESHOLD = 0.003  # advective flux quiver threshold
+TOTAL_QUIVER_MAG_THRESHOLD = 0.003 # total flux quiver threshold
+QUIVER_LENGTH = 20.0  # constant arrow length in axis units
 SHOW_QUIVER = True  # set False for colormap-only flux plots
 SHOW_TURB_MAG_OVERLAY = True  # show |<c'v'>,<c'u'>| background for turbulent fluxes
+TURB_VMIN = 0.00005
+TURB_VMAX = 0.01
 #MAG_VMIN = 0.0001     # magnitude color lower bound; None auto-scales
-MAG_VMIN = -0.005
-MAG_VMAX = 0.005     # magnitude color upper bound; None auto-scales
+MAG_VMIN = -0.001
+MAG_VMAX = 0.001     # magnitude color upper bound; None auto-scales
 SHOW_ADV_MAG_OVERLAY = True  # show |<v><c>, <u><c>| background for advective fluxes
-# ADV_MAG_VMIN = 0.001  # set None to auto-scale for advective magnitude
-ADV_MAG_VMIN = -0.1
-ADV_MAG_VMAX = 0.1  # set None to auto-scale for advective magnitude
+ADV_MAG_VMIN = 0.001  # set None to auto-scale for advective magnitude
+ADV_MAG_VMAX = 0.1
+U_MAG_VMIN_COMP = -0.1
+U_MAG_VMAX_COMP = 0.1  # set None to auto-scale for advective magnitude
+V_MAG_VMIN_COMP = -1
+V_MAG_VMAX_COMP = 1  # set None to auto-scale for advective magnitude
 DIFFUSIVE_FILL_NANS = True  # fill NaNs via nearest-neighbor interpolation for diffusive case
 FIG_DPI = 600
-COMPUTE_FLUXES = True  # set to False to skip computation and only plot existing data
-PLOT_TURBULENT = False  # plot turbulent scalar fluxes c'u', c'v', c'w'
-PLOT_ADVECTIVE = False  # plot mean-velocity * mean-concentration fluxes
-SAVE_ADVECTIVE = False  # save advective flux arrays to disk
+COMPUTE_FLUXES = False  # set to False to skip computation and only plot existing data
+PLOT_TURBULENT = True  # plot turbulent scalar fluxes c'u', c'v', c'w'
+PLOT_ADVECTIVE = True  # plot mean-velocity * mean-concentration fluxes
+SAVE_ADVECTIVE = True  # save advective flux arrays to disk
 PLOT_TOTAL = True  # plot total fluxes <u c>, <v c>, <w c>
-SAVE_TOTAL = False  # save total flux arrays to disk
+SAVE_TOTAL = True  # save total flux arrays to disk
 SHOW_TOTAL_MAG_OVERLAY = True  # show |<v c>, <u c>| background for total fluxes
-TOTAL_MAG_VMIN = 0.001  # set None to auto-scale for total magnitude
+TOTAL_MAG_VMIN = 0.005  # set None to auto-scale for total magnitude
 TOTAL_MAG_VMAX = 0.01  # set None to auto-scale for total magnitude
 PLOT_TOTAL_COMPONENTS = True  # plot total u-flux and v-flux separately
 TOTAL_COMPONENT_CMAP = "RdBu_r"
 TOTAL_COMPONENT_VMIN = None  # fallback only when per-component limits are not passed
 TOTAL_COMPONENT_VMAX = None  # fallback only when per-component limits are not passed
-TOTAL_COMPONENT_QUIVER_THRESHOLD = 0.0012  # fallback only when per-component threshold is not passed
+TOTAL_COMPONENT_QUIVER_THRESHOLD = 0.00012  # fallback only when per-component threshold is not passed
 TOTAL_COMPONENT_LOG_SCALE = True  # use signed-log color scaling for component overlays
 TOTAL_COMPONENT_LOG_LINTHRESH = None  # None -> auto from quiver threshold
 # -------------------------------------------------------------------
@@ -292,32 +299,32 @@ def _load_concentration_mean() -> np.ndarray:
     if not CONCENTRATION_PATH.exists():
         raise FileNotFoundError(f"Concentration stack not found: {CONCENTRATION_PATH}")
     conc = np.load(CONCENTRATION_PATH, mmap_mode="r")
-    conc = conc[X_SLICE, CONC_Y_SLICE, T_SLICE]
-    return np.mean(conc, axis=2)
+    conc = conc[T_SLICE, X_SLICE, CONC_Y_SLICE]
+    return np.mean(conc, axis=0)
 
 
 def main() -> None:
     # Load fluctuating velocity components if need to compute  (already trimmed in y)
     if COMPUTE_FLUXES:
-        u_flx = np.load(FLX_DIR / f"u_flx_{CASE_NAME}_FINAL_AllTimeSteps.npy", mmap_mode="r")
-        v_flx = np.load(FLX_DIR / f"v_flx_{CASE_NAME}_FINAL_AllTimeSteps.npy", mmap_mode="r")
-        w_flx = np.load(FLX_DIR / f"w_flx_{CASE_NAME}_FINAL_AllTimeSteps.npy", mmap_mode="r")
-        u_flx = u_flx[X_SLICE, VEL_Y_SLICE, T_SLICE]
-        v_flx = v_flx[X_SLICE, VEL_Y_SLICE, T_SLICE]
-        w_flx = w_flx[X_SLICE, VEL_Y_SLICE, T_SLICE]
+        u_flx = np.load(FLX_DIR / f"u_flx_{CASE_NAME}.npy", mmap_mode="r")
+        v_flx = np.load(FLX_DIR / f"v_flx_{CASE_NAME}.npy", mmap_mode="r")
+        w_flx = np.load(FLX_DIR / f"w_flx_{CASE_NAME}.npy", mmap_mode="r")
+        u_flx = u_flx[T_SLICE, X_SLICE, VEL_Y_SLICE]
+        v_flx = v_flx[T_SLICE, X_SLICE, VEL_Y_SLICE]
+        w_flx = w_flx[T_SLICE, X_SLICE, VEL_Y_SLICE]
 
         # Load concentration and compute fluctuations on the same region/time span
         # conc_mean = _load_concentration_mean()
-        conc = np.load(CONCENTRATION_PATH, mmap_mode="r")[X_SLICE, CONC_Y_SLICE, :]
-        conc_mean = np.nanmean(conc, axis=2)
-        conc = conc[:, :, T_SLICE]
+        conc = np.load(CONCENTRATION_PATH, mmap_mode="r")[:, X_SLICE, CONC_Y_SLICE]
+        conc_mean = np.nanmean(conc, axis=0)
+        conc = conc[T_SLICE, :, :]
 
-        conc_flx = conc - conc_mean[:, :, None]
+        conc_flx = conc - conc_mean[None, :, :]
 
         # Compute time-averaged scalar fluxes
-        uc_flux = np.mean(u_flx * conc_flx, axis=2)
-        vc_flux = np.mean(v_flx * conc_flx, axis=2)
-        wc_flux = np.mean(w_flx * conc_flx, axis=2)
+        uc_flux = np.mean(u_flx * conc_flx, axis=0)
+        vc_flux = np.mean(v_flx * conc_flx, axis=0)
+        wc_flux = np.mean(w_flx * conc_flx, axis=0)
 
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         np.save(OUT_DIR / f"uc_flux_{CASE_NAME}.npy", uc_flux)
@@ -343,10 +350,10 @@ def main() -> None:
             uc_plot,
             vc_plot,
             wc_plot,
-            title=f"Scalar fluxes: quiver (<c'v'>, <c'u'>) shaded by |<c'v'>,<c'u'>|\ncase={CASE_NAME}",
+            title=f"Turbulent fluxes: quiver (<c'v'>, <c'u'>) shaded by |<c'v'>,<c'u'>|\ncase={CASE_NAME}",
             fig_path=OUT_DIR / f"scalar_flux_quiver_{CASE_NAME}_t_{T_SLICE}.png",
-            mag_vmin=MAG_VMIN,
-            mag_vmax=MAG_VMAX,
+            mag_vmin=TURB_VMIN,
+            mag_vmax=TURB_VMAX,
             show_mag_overlay=SHOW_TURB_MAG_OVERLAY,
             quiver_mag_threshold=TURB_QUIVER_MAG_THRESHOLD,
         )
@@ -400,15 +407,15 @@ def main() -> None:
             vc_total = np.load(OUT_DIR / f"vc_total_{CASE_NAME}.npy", mmap_mode="r")
         else:
             conc = np.load(CONCENTRATION_PATH, mmap_mode="r")
-            conc = conc[X_SLICE, CONC_Y_SLICE, T_SLICE]
+            conc = conc[T_SLICE, X_SLICE, CONC_Y_SLICE]
             u = np.load(U_PATH, mmap_mode="r")
             v = np.load(V_PATH, mmap_mode="r")
 
-            u_total = u[X_SLICE, CONC_Y_SLICE, T_SLICE]
-            v_total = v[X_SLICE, CONC_Y_SLICE, T_SLICE]
+            u_total = u[T_SLICE, X_SLICE, CONC_Y_SLICE]
+            v_total = v[T_SLICE, X_SLICE, CONC_Y_SLICE]
 
-            uc_total = np.nanmean(u_total * conc, axis=2)
-            vc_total = np.nanmean(v_total * conc, axis=2)
+            uc_total = np.nanmean(u_total * conc, axis=0)
+            vc_total = np.nanmean(v_total * conc, axis=0)
 
             if SAVE_TOTAL:
                 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -440,8 +447,8 @@ def main() -> None:
                 component="u",
                 title=f"Total u flux: vector direction overlaid on <u c>\ncase={CASE_NAME}",
                 fig_path=OUT_DIR / f"total_u_flux_vectors_{CASE_NAME}_t_{T_SLICE}.png",
-                value_vmin=MAG_VMIN,
-                value_vmax=MAG_VMAX,
+                value_vmin=U_MAG_VMIN_COMP,
+                value_vmax=U_MAG_VMAX_COMP,
                 quiver_abs_threshold=TURB_QUIVER_MAG_THRESHOLD,
             )
             _plot_component_flux_vector_overlay(
@@ -449,8 +456,8 @@ def main() -> None:
                 component="v",
                 title=f"Total v flux: vector direction overlaid on <v c>\ncase={CASE_NAME}",
                 fig_path=OUT_DIR / f"total_v_flux_vectors_{CASE_NAME}_t_{T_SLICE}.png",
-                value_vmin=ADV_MAG_VMIN,
-                value_vmax=ADV_MAG_VMAX,
+                value_vmin=V_MAG_VMIN_COMP,
+                value_vmax=V_MAG_VMAX_COMP,
                 quiver_abs_threshold=ADV_QUIVER_MAG_THRESHOLD,
             )
 

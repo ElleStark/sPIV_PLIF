@@ -25,7 +25,7 @@ from scipy.interpolate import griddata
 # Edit these settings as needed
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 PLOTS_ROOT = BASE_PATH / "flow_properties" / "Plots"
-DATA_SUBDIR = "FINAL_AllTimeSteps"
+DATA_SUBDIR = ""
 CMAP = cmr.ember
 VMIN = 0  # set to a float to fix the color scale
 VMAX = 0.35  # set to a float to fix the color scale
