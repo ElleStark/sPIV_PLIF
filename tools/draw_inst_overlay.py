@@ -25,18 +25,18 @@ from src.sPIV_PLIF_postprocessing.visualization.viz import save_overlay_contour
 # -------------------------------------------------------------------
 # Edit these paths/settings for your dataset
 # -------------------------------------------------------------------
-CASE_NAME = "diffusive"  # used to build file paths
+CASE_NAME = "fractal"  # used to build file paths
 U_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/Interpolated_to_PLIF/piv_{CASE_NAME}_u.npy")
 V_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/Interpolated_to_PLIF/piv_{CASE_NAME}_v.npy")
 # W_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PIV/old/piv_{CASE_NAME}_w.npy")
 C_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_PLIF.npy")
-FRAME_IDX = 251  # frame index to plot
-OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/{CASE_NAME}/frame{FRAME_IDX}_02_qc.png")
-CMIN = 0.02
-CMAX = 1.0
+FRAME_IDX = 175  # frame index to plot
+OUT_PATH = Path(f"E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/{CASE_NAME}/frame{FRAME_IDX}_whitetojet06.png")
+CMIN = 0.005
+CMAX = 0.6
 X_PATH: Path | None = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_xgrid.npy")
 Y_PATH: Path | None = Path(f"E:/sPIV_PLIF_ProcessedData/PLIF/{CASE_NAME}_ygrid.npy")
-LOG_SCALE = True  # set True to plot concentration on a log scale
+LOG_SCALE = False  # set True to plot concentration on a log scale
 # CMAP_NAME = cmr.rainforest # jet for concentration
 # CMAP_SLICE = (0.0, 1)
 # C_UNDER: str | None = None  # fade in from white

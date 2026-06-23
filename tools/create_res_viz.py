@@ -29,14 +29,20 @@ xlim = [-66, -46]  # limits in mm
 # xlim = [-100, 100]
 
 # write paths
-plif_save_path = "E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/resolution/plif_fractal_" + str(frame_no) + "AltLoc.png"
-piv_save_path = "E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/resolution/piv_fractal_" + str(frame_no) + "AltLoc.png"
+plif_save_path = "E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/resolution/plif_fractal_" + str(frame_no) + "whitetojet06.png"
+piv_save_path = "E:/sPIV_PLIF_ProcessedData/Plots/Instantaneous/resolution/piv_fractal_" + str(frame_no) + "whitetojet06.png"
 
 # plot settings
-plif_cmap = cmr.rainforest_r
+# plif_cmap = cmr.rainforest_r
+CMAP_NAME = "jet"  # jet for concentration
+CMAP_SLICE = (0.0, 1.0)
+C_UNDER: str | None = "white"  # fade in from white
+C_UNDER_TRANSITION: float | None = 0.1  # fraction of cmap for white->jet blend
+C_UNDER_START: float | None = 0.01
+C_UNDER_END: float | None = 0.02
 # plif_cmap = cmr.get_sub_cmap(plif_cmap, 0, 0.65)
-plif_vmin = 0.00
-plif_vmax = 0.20
+plif_vmin = 0.005
+plif_vmax = 0.6
 
 vec_stride = 1 # SET TO 1 FOR FINAL RESOLUTION PLOT!!!!
 # piv_tailwidth = 0.0025
@@ -76,6 +82,35 @@ x_idx = np.where(mask_x)[0]
 c = c[np.ix_(y_idx, x_idx)]
 plif_x = plif_x[x_idx]
 plif_y = plif_y[y_idx]
+
+# construct white to jet colormap
+if C_UNDER is not None:
+    try:
+        cmap = plt.get_cmap(CMAP_NAME)
+        cmap = cmap.copy()
+        cmap.set_under(C_UNDER)
+    except Exception:
+        pass
+if C_UNDER_TRANSITION is not None and C_UNDER_TRANSITION > 0:
+    transition_fraction = C_UNDER_TRANSITION
+else:
+    transition_fraction = None
+if transition_fraction is not None and transition_fraction > 0:
+    colorstack = cmap(np.linspace(0, 1, 256))
+    n_under = max(2, int(len(colorstack) * min(transition_fraction, 0.5)))
+    white = np.array([1.0, 1.0, 1.0, 1.0])
+    first_color = colorstack[0]
+    under_grad = np.stack(
+        [
+            white * (1 - t) + first_color * t
+            for t in np.linspace(0, 1, n_under, endpoint=True)
+        ],
+        axis=0,
+    )
+    colorstack = np.vstack([under_grad, colorstack])
+    plif_cmap = colors.ListedColormap(colorstack)
+
+
 
 # plotting
 fig, ax = plt.subplots(figsize=(8, 6))
