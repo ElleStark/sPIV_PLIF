@@ -2,7 +2,7 @@
 
 import h5py
 import numpy as np
-
+import matplotlib.pyplot as plt
 
 # file paths
 # h5_path = "E:/sPIV_PLIF_ProcessedData/PLIF/Baseline_PLIF.h5"
@@ -33,8 +33,11 @@ import numpy as np
 # print(f"Saved transposed data to E:/sPIV_PLIF_ProcessedData/PIV/Interpolated_to_PLIF/piv_baseline_v.npy")
 
 
-data = np.load("E:/sPIV_PLIF_ProcessedData/PLIF/baseline_PLIF.npy")
-data = np.flip(data, axis=1)  # flip vertically to match PIV orientation
-np.save("E:/sPIV_PLIF_ProcessedData/PLIF/baseline_PLIF_flipped.npy", data)
+data = np.load("E:/sPIV_PLIF_ProcessedData/PLIF/Baseline_PLIF.npy")
+
+# data = np.flip(data, axis=1)  # flip vertically to match PIV orientation
+plt.pcolormesh(data[0, :, :])
+plt.show()
+# np.save("E:/sPIV_PLIF_ProcessedData/PLIF/baseline_PLIF_flipped.npy", data)
 
 

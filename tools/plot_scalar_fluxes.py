@@ -32,7 +32,7 @@ from src.sPIV_PLIF_postprocessing.analysis.flow_properties import load_mean_velo
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "nearbed" 
+CASE_NAME = "Buoyant" 
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"{CASE_NAME}_PLIF.npy"
 U_PATH = BASE_PATH / "PIV" / "Interpolated_to_PLIF" / f"piv_{CASE_NAME}_u.npy"  # used only for total fluxes, not turbulent fluxes
@@ -58,28 +58,28 @@ QUIVER_LENGTH = 20.0  # constant arrow length in axis units
 SHOW_QUIVER = True  # set False for colormap-only flux plots
 SHOW_TURB_MAG_OVERLAY = True  # show |<c'v'>,<c'u'>| background for turbulent fluxes
 TURB_VMIN = 0.00005
-TURB_VMAX = 0.01
+TURB_VMAX = 0.005
 #MAG_VMIN = 0.0001     # magnitude color lower bound; None auto-scales
 MAG_VMIN = -0.001
 MAG_VMAX = 0.001     # magnitude color upper bound; None auto-scales
 SHOW_ADV_MAG_OVERLAY = True  # show |<v><c>, <u><c>| background for advective fluxes
-ADV_MAG_VMIN = 0.001  # set None to auto-scale for advective magnitude
-ADV_MAG_VMAX = 0.1
+ADV_MAG_VMIN = 0.003  # set None to auto-scale for advective magnitude
+ADV_MAG_VMAX = 0.05
 U_MAG_VMIN_COMP = -0.1
 U_MAG_VMAX_COMP = 0.1  # set None to auto-scale for advective magnitude
 V_MAG_VMIN_COMP = -1
 V_MAG_VMAX_COMP = 1  # set None to auto-scale for advective magnitude
 DIFFUSIVE_FILL_NANS = True  # fill NaNs via nearest-neighbor interpolation for diffusive case
 FIG_DPI = 600
-COMPUTE_FLUXES = False  # set to False to skip computation and only plot existing data
+COMPUTE_FLUXES = True  # set to False to skip computation and only plot existing data
 PLOT_TURBULENT = True  # plot turbulent scalar fluxes c'u', c'v', c'w'
 PLOT_ADVECTIVE = True  # plot mean-velocity * mean-concentration fluxes
 SAVE_ADVECTIVE = True  # save advective flux arrays to disk
 PLOT_TOTAL = True  # plot total fluxes <u c>, <v c>, <w c>
 SAVE_TOTAL = True  # save total flux arrays to disk
 SHOW_TOTAL_MAG_OVERLAY = True  # show |<v c>, <u c>| background for total fluxes
-TOTAL_MAG_VMIN = 0.005  # set None to auto-scale for total magnitude
-TOTAL_MAG_VMAX = 0.01  # set None to auto-scale for total magnitude
+TOTAL_MAG_VMIN = 0.003  # set None to auto-scale for total magnitude
+TOTAL_MAG_VMAX = 0.05  # set None to auto-scale for total magnitude
 PLOT_TOTAL_COMPONENTS = True  # plot total u-flux and v-flux separately
 TOTAL_COMPONENT_CMAP = "RdBu_r"
 TOTAL_COMPONENT_VMIN = None  # fallback only when per-component limits are not passed
