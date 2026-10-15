@@ -9,7 +9,7 @@ BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData/PLIF")
 ORIG_FILE = BASE_PATH / f"{CASE_NAME}_PLIF.h5"
 DATASET_NAME = f"DataSets/{CASE_NAME}_FinalData"
 SPLIT_FOLDER = BASE_PATH / "Train_Test_split"
-N_FRAMES_TRAINING = 4000
+N_FRAMES_TRAINING = 3000
 N_FRAMES_TOTAL = 6000
 
 
@@ -57,8 +57,8 @@ def copy_with_filtered_dataset(src_name, src_obj, dest_file, target_path, frames
         dest_file.copy(src_obj, src_name)
 
 
-train_file = SPLIT_FOLDER / f"{CASE_NAME}_PLIF_train.h5"
-test_file = SPLIT_FOLDER / f"{CASE_NAME}_PLIF_test.h5"
+train_file = SPLIT_FOLDER / f"{CASE_NAME}_PLIF_train3k.h5"
+test_file = SPLIT_FOLDER / f"{CASE_NAME}_PLIF_test3k.h5"
 
 with h5py.File(ORIG_FILE, 'r') as src_f, h5py.File(train_file, 'w') as train_f, h5py.File(test_file, 'w') as test_f:
     for attr_name, attr_val in src_f.attrs.items():

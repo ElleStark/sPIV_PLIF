@@ -32,7 +32,7 @@ from src.sPIV_PLIF_postprocessing.analysis.flow_properties import load_mean_velo
 
 # -------------------------------------------------------------------
 # Edit these settings for your dataset
-CASE_NAME = "Buoyant" 
+CASE_NAME = "smSource" 
 BASE_PATH = Path("E:/sPIV_PLIF_ProcessedData")
 CONCENTRATION_PATH = BASE_PATH / "PLIF" / f"{CASE_NAME}_PLIF.npy"
 U_PATH = BASE_PATH / "PIV" / "Interpolated_to_PLIF" / f"piv_{CASE_NAME}_u.npy"  # used only for total fluxes, not turbulent fluxes
@@ -45,20 +45,24 @@ CONC_Y_SLICE = slice(int(50/DX), int(250/DX))  # apply to concentration to align
 VEL_Y_SLICE = slice(None)
 T_SLICE = slice(0, 6000)
 QUIVER_STEP = 25  # subsample for quiver display
-OUT_DIR = BASE_PATH / "flow_properties" / "scalar_fluxes"
+OUT_DIR = BASE_PATH / "flow_properties" / "scalar_fluxes" 
 MEAN_X_SLICE = X_SLICE
 MEAN_Y_SLICE = CONC_Y_SLICE
 XLABEL = "x index"
 YLABEL = "y index"
-MAG_CMAP = cmr.get_sub_cmap(cmr.rainforest_r, 0, 0.6)
+MAG_CMAP = cmr.get_sub_cmap(cmr.rainforest_r, 0, 1)
 TURB_QUIVER_MAG_THRESHOLD = 0.00005  # turbulent flux quiver threshold
 ADV_QUIVER_MAG_THRESHOLD = 0.003  # advective flux quiver threshold
 TOTAL_QUIVER_MAG_THRESHOLD = 0.003 # total flux quiver threshold
 QUIVER_LENGTH = 20.0  # constant arrow length in axis units
 SHOW_QUIVER = True  # set False for colormap-only flux plots
-SHOW_TURB_MAG_OVERLAY = True  # show |<c'v'>,<c'u'>| background for turbulent fluxes
+SHOW_TURB_MAG_OVERLAY = False  # show |<c'v'>,<c'u'>| background for turbulent fluxes
 TURB_VMIN = 0.00005
 TURB_VMAX = 0.005
+TURB_LOG_QUIVER = True  # turbulent fluxes: arrows with log-scaled length + color, no background (else direction-only arrows)
+LOG_QUIVER_CMAP = cmr.get_sub_cmap(cmr.rainforest_r, 0.0, 0.85)  # top of rainforest is near-white; trimmed to stay visible
+LOG_QUIVER_MIN_LENGTH = 5.0  # arrow length (axis units) at TURB_VMIN
+LOG_QUIVER_MAX_LENGTH = 30.0  # arrow length (axis units) at TURB_VMAX; ~QUIVER_STEP so arrows don't overlap
 #MAG_VMIN = 0.0001     # magnitude color lower bound; None auto-scales
 MAG_VMIN = -0.001
 MAG_VMAX = 0.001     # magnitude color upper bound; None auto-scales
@@ -71,16 +75,16 @@ V_MAG_VMIN_COMP = -1
 V_MAG_VMAX_COMP = 1  # set None to auto-scale for advective magnitude
 DIFFUSIVE_FILL_NANS = True  # fill NaNs via nearest-neighbor interpolation for diffusive case
 FIG_DPI = 600
-COMPUTE_FLUXES = True  # set to False to skip computation and only plot existing data
+COMPUTE_FLUXES = False  # set to False to skip computation and only plot existing data
 PLOT_TURBULENT = True  # plot turbulent scalar fluxes c'u', c'v', c'w'
-PLOT_ADVECTIVE = True  # plot mean-velocity * mean-concentration fluxes
-SAVE_ADVECTIVE = True  # save advective flux arrays to disk
-PLOT_TOTAL = True  # plot total fluxes <u c>, <v c>, <w c>
-SAVE_TOTAL = True  # save total flux arrays to disk
+PLOT_ADVECTIVE = False  # plot mean-velocity * mean-concentration fluxes
+SAVE_ADVECTIVE = False  # save advective flux arrays to disk
+PLOT_TOTAL = False  # plot total fluxes <u c>, <v c>, <w c>
+SAVE_TOTAL = False  # save total flux arrays to disk
 SHOW_TOTAL_MAG_OVERLAY = True  # show |<v c>, <u c>| background for total fluxes
 TOTAL_MAG_VMIN = 0.003  # set None to auto-scale for total magnitude
 TOTAL_MAG_VMAX = 0.05  # set None to auto-scale for total magnitude
-PLOT_TOTAL_COMPONENTS = True  # plot total u-flux and v-flux separately
+PLOT_TOTAL_COMPONENTS = False  # plot total u-flux and v-flux separately
 TOTAL_COMPONENT_CMAP = "RdBu_r"
 TOTAL_COMPONENT_VMIN = None  # fallback only when per-component limits are not passed
 TOTAL_COMPONENT_VMAX = None  # fallback only when per-component limits are not passed
@@ -174,6 +178,76 @@ def _plot_flux_quiver(
     ax.set_aspect("equal", adjustable="box")
     if h is not None:
         fig.colorbar(h, ax=ax, label=mag_label)
+    fig.tight_layout()
+
+    fig_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(fig_path, dpi=FIG_DPI)
+    plt.close(fig)
+
+
+def _plot_flux_log_quiver(
+    uc_flux: np.ndarray,
+    vc_flux: np.ndarray,
+    *,
+    title: str,
+    fig_path: Path,
+    mag_vmin: float,
+    mag_vmax: float,
+    mag_label: str = "|<c'v'>,<c'u'>|",
+) -> None:
+    """Quiver with arrow length and color both scaled by log10 of the flux magnitude; no background map.
+    Arrows below mag_vmin are hidden; above mag_vmax they are drawn at max length and max color."""
+    # Same grid layout as _plot_flux_quiver
+    x_offset = X_SLICE.start or 0
+    y_offset = CONC_Y_SLICE.start or 0
+    X_idx = np.arange(uc_flux.shape[0]) + x_offset
+    Y_idx = np.arange(uc_flux.shape[1]) + y_offset
+    Xg, Yg = np.meshgrid(Y_idx, X_idx)
+
+    step = QUIVER_STEP
+    Xg_q = Xg[::step, ::step]
+    Yg_q = Yg[::step, ::step]
+    uc_q = np.asarray(uc_flux[::step, ::step], dtype=float)
+    vc_q = np.asarray(vc_flux[::step, ::step], dtype=float)
+    mag_q = np.hypot(uc_q, vc_q)
+    show = np.isfinite(mag_q) & (mag_q >= mag_vmin)
+
+    # Length: linear in log10(magnitude) between mag_vmin and mag_vmax
+    log_frac = np.full_like(mag_q, np.nan)
+    log_frac[show] = np.clip(
+        (np.log10(mag_q[show]) - np.log10(mag_vmin)) / (np.log10(mag_vmax) - np.log10(mag_vmin)), 0.0, 1.0
+    )
+    length = LOG_QUIVER_MIN_LENGTH + (LOG_QUIVER_MAX_LENGTH - LOG_QUIVER_MIN_LENGTH) * log_frac
+    mag_safe = np.where(show, mag_q, 1.0)
+    uc_draw = np.ma.masked_where(~show, uc_q / mag_safe * length)
+    vc_draw = np.ma.masked_where(~show, vc_q / mag_safe * length)
+    color_vals = np.ma.masked_where(~show, np.clip(mag_q, mag_vmin, mag_vmax))
+
+    fig, ax = plt.subplots(figsize=(6.5, 8))  # domain is taller (x rows) than wide
+    q = ax.quiver(
+        Xg_q,
+        Yg_q,
+        uc_draw,
+        vc_draw,
+        color_vals,
+        cmap=LOG_QUIVER_CMAP,
+        norm=LogNorm(vmin=mag_vmin, vmax=mag_vmax),
+        angles="xy",
+        scale_units="xy",
+        scale=1.0,
+        pivot="mid",
+        width=0.004,
+        headwidth=3.5,
+        headlength=4,
+        headaxislength=3.5,
+    )
+    ax.set_xlim(Y_idx[0], Y_idx[-1])
+    ax.set_ylim(X_idx[0], X_idx[-1])
+    ax.set_xlabel(XLABEL)
+    ax.set_ylabel(YLABEL)
+    ax.set_title(title)
+    ax.set_aspect("equal", adjustable="box")
+    fig.colorbar(q, ax=ax, label=f"{mag_label} (arrow color and log-scaled length)")
     fig.tight_layout()
 
     fig_path.parent.mkdir(parents=True, exist_ok=True)
@@ -345,7 +419,16 @@ def main() -> None:
         vc_plot = _fill_nan_nearest(vc_plot)
         wc_plot = _fill_nan_nearest(wc_plot)
 
-    if PLOT_TURBULENT:
+    if PLOT_TURBULENT and TURB_LOG_QUIVER:
+        _plot_flux_log_quiver(
+            uc_plot,
+            vc_plot,
+            title=f"Turbulent fluxes (<c'v'>, <c'u'>), log-scaled arrows\ncase={CASE_NAME}",
+            fig_path=OUT_DIR / f"scalar_flux_logquiver_{CASE_NAME}_t_{T_SLICE}.png",
+            mag_vmin=TURB_VMIN,
+            mag_vmax=TURB_VMAX,
+        )
+    elif PLOT_TURBULENT:
         _plot_flux_quiver(
             uc_plot,
             vc_plot,

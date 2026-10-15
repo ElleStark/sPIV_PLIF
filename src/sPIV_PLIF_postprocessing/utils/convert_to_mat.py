@@ -5,17 +5,17 @@ import scipy.io as sio
 import h5py 
 
 
-data = np.load('E:/sPIV_PLIF_ProcessedData/PIV/old/piv_baseline_u.npy')
-data = np.nan_to_num(data)
+data = np.load('E:/sPIV_PLIF_ProcessedData/PIV/Interpolated_to_PLIF/piv_baseline_u.npy')
+# data = np.nan_to_num(data)
 print('Data shape:', data.shape)
 print('Data dtype:', data.dtype)
 
-data2 = np.load('E:/sPIV_PLIF_ProcessedData/PIV/old/piv_baseline_v.npy')
-data2 = np.nan_to_num(data2)
+data2 = np.load('E:/sPIV_PLIF_ProcessedData/PIV/Interpolated_to_PLIF/piv_baseline_v.npy')
+# data2 = np.nan_to_num(data2)
 print('Data2 shape:', data2.shape)
 print('Data2 dtype:', data2.dtype)
 
-with h5py.File('E:/sPIV_PLIF_ProcessedData/PIV/old/MATLAB/piv_baseline.h5', 'w') as hf:
+with h5py.File('E:/sPIV_PLIF_ProcessedData/PIV/Interpolated_to_PLIF/H5/piv_baseline.h5', 'w') as hf:
     hf.create_dataset('u_velocity', data=data)
     hf.create_dataset('v_velocity', data=data2)
 
