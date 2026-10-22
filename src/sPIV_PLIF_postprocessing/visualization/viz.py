@@ -694,6 +694,45 @@ def compute_gaussian_params_at_y(
     return results, y_match
 
 
+def fit_sigma_diffusivity(
+    x: np.ndarray,
+    sigma: np.ndarray,
+    mean_velocity_mm_s: float = 300.0,
+) -> dict[str, float]:
+    """
+    Fit sigma^2 = a + b * x (Taylor dispersion with t = x / U) and derive diffusivity terms.
+
+        D      = b * U / 2
+        sigma0 = sqrt(a)            (NaN if a < 0)
+        x0     = -a / b             (virtual origin: sigma^2 = 2 D (x - x0) / U)
+
+    Goodness of fit is evaluated in sigma (not sigma^2) space:
+        rmse  = sqrt(mean((sigma - sigma_fit)^2))       [mm]
+        nrmse = rmse / mean(sigma)
+        r2    = 1 - SS_res / SS_tot
+    """
+    x = np.asarray(x, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+    if x.size < 2:
+        raise ValueError("Need at least 2 points for a diffusivity fit.")
+    slope, intercept = np.polyfit(x, sigma**2, 1)
+    sigma_fit = np.sqrt(np.clip(intercept + slope * x, 0.0, None))
+    resid = sigma - sigma_fit
+    rmse = float(np.sqrt(np.mean(resid**2)))
+    ss_tot = float(np.sum((sigma - sigma.mean()) ** 2))
+    return {
+        "slope": float(slope),
+        "intercept": float(intercept),
+        "D": float(0.5 * slope * mean_velocity_mm_s),
+        "sigma0": float(np.sqrt(intercept)) if intercept > 0 else float("nan"),
+        "x0": float(-intercept / slope) if slope != 0 else float("nan"),
+        "rmse": rmse,
+        "nrmse": rmse / float(sigma.mean()),
+        "r2": 1.0 - float(np.sum(resid**2)) / ss_tot if ss_tot > 0 else float("nan"),
+        "n_points": int(x.size),
+    }
+
+
 def plot_gaussian_param_scatter(
     gaussian_results: Sequence[tuple[float, float, Sequence[tuple[str, float, float]]]],
     *,
@@ -706,13 +745,42 @@ def plot_gaussian_param_scatter(
     figsize: tuple[float, float] = (7.0, 4.5),
     dpi: int = 600,
     marker_size: float = 70.0,
-) -> None:
+    marker_every: int = 1,
+    connect_points: bool = True,
+    fit_diffusivity: bool = False,
+    mean_velocity_mm_s: float = 300.0,
+    fit_x_min_by_case: Optional[dict[str, float]] = None,
+    hollow_markers: bool = False,
+    axes_size_in: Optional[tuple[float, float]] = None,
+) -> dict[str, tuple[float, float, float]]:
     """
     Scatter plot of Gaussian parameters versus y-location with marker variations by case.
 
+    axes_size_in = (width, height) fixes the plot area size in inches (figsize is then ignored),
+    so plots with different legend widths share the same aspect ratio. The saved image is
+    cropped to its contents with bbox_inches="tight".
+
     gaussian_results should be a sequence of (target_y, nearest_y, results) where results is a
-    sequence of (label, mu, sigma) tuples.
+    sequence of (label, mu, sigma) tuples. With many y-locations, set marker_every > 1 to draw
+    markers on every Nth point only.
+
+    If fit_diffusivity is True (sigma only), each case is fit with
+    sigma^2 = sigma0^2 + 2 * D * x / U  (Taylor dispersion with t = x / U), and the fitted
+    curve is drawn instead of connecting the points. fit_x_min_by_case optionally restricts
+    each case's fit to points with x >= that value (cases not listed use all points); the
+    curve is solid over the fitted range and dashed where extrapolated.
+
+    The linear fit sigma^2 = a + b * x gives:
+        D     = b * U / 2                (effective diffusivity)
+        sigma0 = sqrt(a)                 (width at x = 0; NaN if a < 0)
+        x0    = -a / b = -sigma0^2 * U / (2 D)
+    where x0 is the virtual origin: the x at which a point source would have zero width, so
+    sigma^2 = 2 D (x - x0) / U. x0 < 0 means the virtual source sits upstream of x = 0.
+
+    Returns {label: (D, sigma0, x0)} with D in mm^2/s, sigma0 and x0 in mm (empty if no fit).
     """
+    if fit_diffusivity and param != "sigma":
+        raise ValueError("fit_diffusivity is only valid for param='sigma'.")
     if param not in {"mu", "sigma"}:
         raise ValueError("param must be 'mu' or 'sigma'.")
     if len(gaussian_results) == 0:
@@ -735,8 +803,16 @@ def plot_gaussian_param_scatter(
 
     case_points: dict[str, list[tuple[float, float]]] = {label: [] for label in case_labels}
 
-    plt.figure(figsize=figsize)
-    ax = plt.gca()
+    if axes_size_in is not None:
+        # Fixed-size axes with margins for labels; the outside legend is captured by the tight bbox.
+        ax_w, ax_h = axes_size_in
+        left, bottom, right, top = 0.9, 0.7, 0.2, 0.5
+        fig_w, fig_h = left + ax_w + right, bottom + ax_h + top
+        fig = plt.figure(figsize=(fig_w, fig_h))
+        ax = fig.add_axes((left / fig_w, bottom / fig_h, ax_w / fig_w, ax_h / fig_h))
+    else:
+        plt.figure(figsize=figsize)
+        ax = plt.gca()
 
     for target_y, nearest_y, entries in gaussian_results:
         y_plot = nearest_y if np.isfinite(nearest_y) else target_y
@@ -746,55 +822,122 @@ def plot_gaussian_param_scatter(
             if not np.isfinite(val):
                 continue
             case_points[label].append((y_plot, val))
-            ax.scatter(
-                y_plot,
-                val,
-                color=color_map[label],
-                marker=marker_map[label],
-                s=marker_size,
-                edgecolors="k",
-                linewidths=0.5,
-                alpha=0.85,
-                zorder=3,
-                label=None,
-            )
 
-    # Connect points for each case to highlight trends along y.
+    diffusivity_fits: dict[str, tuple[float, float, float]] = {}
     for label, points in case_points.items():
-        if len(points) < 2:
+        if len(points) == 0:
             continue
         points_sorted = sorted(points, key=lambda p: p[0])
         y_vals, param_vals = zip(*points_sorted)
-        ax.plot(
-            y_vals,
-            param_vals,
-            color=color_map[label],
-            linestyle="-",
-            linewidth=1.0,
-            alpha=0.5,
-            zorder=2,
+        step = max(1, int(marker_every))
+        if hollow_markers:
+            marker_style = {"facecolors": "none", "edgecolors": color_map[label], "linewidths": 1.0}
+        else:
+            marker_style = {"color": color_map[label], "edgecolors": "k", "linewidths": 0.5}
+        ax.scatter(
+            y_vals[::step],
+            param_vals[::step],
+            marker=marker_map[label],
+            s=marker_size,
+            alpha=0.85,
+            zorder=3,
+            label=None,
+            **marker_style,
         )
+        if len(points) < 2:
+            continue
+        if fit_diffusivity:
+            # Linear fit of sigma^2 vs x: slope = 2D/U, intercept = sigma0^2.
+            x_all = np.asarray(y_vals, dtype=float)
+            s_all = np.asarray(param_vals, dtype=float)
+            x_min_fit = (fit_x_min_by_case or {}).get(label)
+            fit_mask = x_all >= x_min_fit if x_min_fit is not None else np.ones_like(x_all, dtype=bool)
+            if np.count_nonzero(fit_mask) < 2:
+                logger.warning("Too few points for diffusivity fit for %s (x >= %s)", label, x_min_fit)
+                continue
+            x_arr = x_all[fit_mask]
+            fit = fit_sigma_diffusivity(x_arr, s_all[fit_mask], mean_velocity_mm_s)
+            slope, intercept = fit["slope"], fit["intercept"]
+            d_eff, sigma0, x0 = fit["D"], fit["sigma0"], fit["x0"]
+            diffusivity_fits[label] = (d_eff, sigma0, x0)
+            logger.info(
+                "Effective diffusivity for %s: D=%.4g mm^2/s (%.4g cm^2/s), sigma0^2=%.4g mm^2, x0=%.4g mm",
+                label, d_eff, d_eff / 100.0, intercept, x0,
+            )
+            def _sigma_fit(x: np.ndarray) -> np.ndarray:
+                return np.sqrt(np.clip(intercept + slope * x, 0.0, None))
+
+            x_fit = np.linspace(x_arr.min(), x_arr.max(), 200)
+            ax.plot(x_fit, _sigma_fit(x_fit), color=color_map[label], linestyle="-",
+                    linewidth=1.5, alpha=0.9, zorder=2)
+            # Extrapolate upstream of the fit range for reference, stopping at the virtual origin.
+            x_ext_start = max(x_all.min(), x0) if np.isfinite(x0) else x_all.min()
+            if x_ext_start < x_arr.min():
+                x_ext = np.linspace(x_ext_start, x_arr.min(), 100)
+                ax.plot(x_ext, _sigma_fit(x_ext), color=color_map[label], linestyle="--",
+                        linewidth=1.0, alpha=0.6, zorder=2)
+        elif connect_points:
+            # Connect points for each case to highlight trends along y.
+            ax.plot(
+                y_vals,
+                param_vals,
+                color=color_map[label],
+                linestyle="-",
+                linewidth=1.0,
+                alpha=0.5,
+                zorder=2,
+            )
 
     ax.set_xlabel(xlabel)
     param_label = "mu" if param == "mu" else "sigma"
     ax.set_ylabel(ylabel if ylabel is not None else f"Gaussian {param_label}")
     if param == "mu":
-        ax.set_ylim(-7.5, 7.5)
+        ax.set_ylim(-10.0, 10.0)
     if title:
         ax.set_title(title)
     ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.6)
 
+    # Legend: markers identify each case, then one line entry per fit with its parameters.
     case_handles = [
-        plt.Line2D([], [], color=color_map[label], marker=marker_map[label], linestyle="None", markersize=8, label=label)
+        plt.Line2D(
+            [],
+            [],
+            color=color_map[label],
+            marker=marker_map[label],
+            markerfacecolor="none" if hollow_markers else color_map[label],
+            linestyle="None",
+            markersize=8,
+            label=label,
+        )
         for label in case_labels
     ]
-    ax.legend(handles=case_handles, title="Cases", loc="upper left", bbox_to_anchor=(1.02, 1.0))
+    fit_handles = [
+        plt.Line2D(
+            [],
+            [],
+            color=color_map[label],
+            linestyle="-",
+            linewidth=1.5,
+            label=f"D = {d_eff:.0f} mm$^2$/s   $x_0$ = {x0:.0f} mm",
+        )
+        for label in case_labels
+        if label in diffusivity_fits
+        for d_eff, _, x0 in [diffusivity_fits[label]]
+    ]
+    ax.legend(
+        handles=case_handles + fit_handles,
+        title="Cases",
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.0),
+    )
 
-    plt.tight_layout()
+    if axes_size_in is None:
+        plt.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=dpi, bbox_inches="tight")
     plt.close()
     logger.info("Saved Gaussian %s scatter to %s", param, out_path)
+    return diffusivity_fits
 
 
 def plot_lateral_profiles(

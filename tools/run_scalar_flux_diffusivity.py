@@ -227,7 +227,17 @@ def run_stage2(cfg: dict, case: str) -> dict:
     from src.sPIV_PLIF_postprocessing.analysis.scalar_flux import diffusivity as D
     from src.sPIV_PLIF_postprocessing.analysis.scalar_flux.geometry import plume_centroid_and_width
     C = mom["c_mean"]
-    xc, sig = plume_centroid_and_width(C, grid.x_mm, background=bg)
+    xc_mom, sig_mom = plume_centroid_and_width(C, grid.x_mm, background=bg)
+    if dc.get("width_method", "gaussian") == "gaussian":
+        # Gaussian + offset fit: the second moment is inflated by faint wide skirts (smSource: 17 mm vs ~2 mm near
+        # the source); fall back to the moments where the fit fails
+        from src.sPIV_PLIF_postprocessing.analysis.scalar_flux import spreading as SPR
+        gfit = SPR.gaussian_fit_widths(C, grid.x_mm, xc_mom, sig_mom, background=bg)
+        ok = np.isfinite(gfit["sigma_g"]) & np.isfinite(gfit["x0"])
+        xc = np.where(ok, gfit["x0"], xc_mom)
+        sig = np.where(ok, gfit["sigma_g"], sig_mom)
+    else:
+        xc, sig = xc_mom, sig_mom
     region = D.plume_region(C, grid.x_mm, background=bg, c_threshold=uc["plume_c_threshold"], xc=xc, sigma=sig,
                             n_sigma=dc["plume_n_sigma"])
     k_sig = uc["significance_factor"]

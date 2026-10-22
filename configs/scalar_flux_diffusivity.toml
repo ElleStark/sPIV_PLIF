@@ -61,6 +61,8 @@ sensitivity_stations_mm = [50.0, 150.0, 250.0]  # downstream distances for profi
 
 [diffusion]
 plume_n_sigma = 2.5             # plume region: C - background > plume_c_threshold and |x - x_c| <= n sigma_x
+width_method = "gaussian"       # sigma_x, x_c for the plume region, eta and sigma/L: "gaussian" (fit + offset) or "moment";
+                                # the second moment is inflated by faint wide skirts (smSource 17 mm vs ~2 mm at the source)
 station_centers_mm = [25.0, 50.0, 100.0, 150.0, 200.0, 250.0]  # scatter-panel stations (downstream distance s)
 station_width_mm = 10.0
 profile_bin_start_mm = 15.0     # streamwise bins for the summary curves
